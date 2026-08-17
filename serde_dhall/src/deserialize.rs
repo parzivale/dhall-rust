@@ -5,12 +5,13 @@ use std::fmt;
 use serde::de::value::{
     MapAccessDeserializer, MapDeserializer, SeqDeserializer,
 };
-use serde::de::VariantAccess as _;
+use serde::de::{Deserialize as _, VariantAccess as _};
 
 use dhall::syntax::NumKind;
 
+use crate::function::FUNCTION_TOKEN;
 use crate::value::SimpleValue;
-use crate::{Error, ErrorKind, Value};
+use crate::{Error, ErrorKind, Function, Value};
 
 pub trait Sealed {}
 
@@ -125,6 +126,19 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
         use NumKind::*;
         use SimpleValue::*;
 
+        // A function has no counterpart in the serde data model, so we hand it to the visitor as a
+        // newtype struct. `Function` and `SimpleValue` know how to pick it up from there; any
+        // other type will refuse it.
+        if matches!(self.0.as_ref(), Function(_)) {
+            return visitor.visit_newtype_struct(self).map_err(|_| {
+                Error(ErrorKind::Deserialize(
+                    "cannot deserialize a Dhall function into this type; \
+                     deserialize it into a `serde_dhall::Function` instead"
+                        .to_string(),
+                ))
+            });
+        }
+
         let val = |x| Deserializer(Cow::Borrowed(x));
         match self.0.as_ref() {
             Num(Bool(x)) => visitor.visit_bool(*x),
@@ -150,6 +164,23 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
                     Some((field_name.as_str(), ())).into_iter(),
                 )),
             ),
+            Function(_) => unreachable!("handled above"),
+        }
+    }
+
+    fn deserialize_newtype_struct<V>(
+        self,
+        name: &'static str,
+        visitor: V,
+    ) -> crate::Result<V::Value>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        match self.0.as_ref() {
+            SimpleValue::Function(f) if name == FUNCTION_TOKEN => {
+                visitor.visit_byte_buf(f.to_binary()?)
+            }
+            _ => self.deserialize_any(visitor),
         }
     }
 
@@ -182,7 +213,7 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
 
     serde::forward_to_deserialize_any! {
         bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
-        bytes byte_buf option unit_struct newtype_struct seq
+        bytes byte_buf option unit_struct seq
         tuple_struct map struct enum identifier ignored_any
     }
 }
@@ -230,6 +261,15 @@ impl<'de> serde::de::Visitor<'de> for SimpleValueVisitor {
     {
         let val = val.deserialize_any(SimpleValueVisitor)?;
         Ok(SimpleValue::Optional(Some(Box::new(val))))
+    }
+
+    fn visit_newtype_struct<D>(self, d: D) -> Result<SimpleValue, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // The only newtype struct we ever get here is the one our own `Deserializer` uses to pass
+        // functions along.
+        Function::deserialize(d).map(SimpleValue::Function)
     }
 
     fn visit_enum<V>(self, visitor: V) -> Result<SimpleValue, V::Error>

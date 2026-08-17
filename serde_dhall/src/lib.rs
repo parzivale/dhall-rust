@@ -245,6 +245,48 @@
 //! # }
 //! ```
 //!
+//! # Calling Dhall functions
+//!
+//! Dhall is a programming language, so a configuration file can expose functions as well as data.
+//! Deserialize one into a [`Function`] and you get a deferred chunk of Dhall that you can run from
+//! Rust with [`Function::apply()`], as many times as you like.
+//!
+//! ```rust
+//! # fn main() -> serde_dhall::Result<()> {
+//! use serde::Deserialize;
+//! use serde_dhall::Function;
+//!
+//! #[derive(Deserialize)]
+//! struct Config {
+//!     replicas: u64,
+//!     container_name: Function,
+//! }
+//!
+//! let data = r#"
+//!     { replicas = 3
+//!     , container_name = \(i : Natural) -> "worker-${Natural/show i}"
+//!     }
+//! "#;
+//!
+//! let config: Config = serde_dhall::from_str(data).parse()?;
+//!
+//! let names: Vec<String> = (0..config.replicas)
+//!     .map(|i| config.container_name.apply(i))
+//!     .collect::<serde_dhall::Result<_>>()?;
+//!
+//! assert_eq!(names, vec!["worker-0", "worker-1", "worker-2"]);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! The argument is converted to Dhall the same way [`serialize()`] would convert it, and the
+//! application is type-checked, so passing an argument the function doesn't accept is an error
+//! rather than a surprise. A [`Function`] is self-contained: its imports are already resolved, so
+//! calling it never touches the filesystem or the network.
+//!
+//! Functions serialize as well as they deserialize, so a config containing them can be read,
+//! modified and written back out.
+//!
 //! # Controlling deserialization
 //!
 //! If you need more control over the process of reading Dhall values, e.g. disabling
@@ -261,6 +303,8 @@ mod test_readme {
 
 mod deserialize;
 mod error;
+/// Deferred Dhall functions
+mod function;
 mod options;
 mod serialize;
 mod static_type;
@@ -273,6 +317,7 @@ pub use dhall_proc_macros::StaticType;
 pub use deserialize::{from_simple_value, FromDhall};
 pub(crate) use error::ErrorKind;
 pub use error::{Error, Result};
+pub use function::Function;
 pub use options::de::{
     from_binary, from_binary_file, from_file, from_str, Deserializer,
 };

@@ -2,6 +2,11 @@
 
 #### [Unreleased]
 
+- Deserialize Dhall functions into the new `serde_dhall::Function` type, and call them from Rust
+  with `Function::apply()`. Functions serialize back to Dhall as well
+- BREAKING CHANGE: Add a `Function` variant to `SimpleValue` and a `Function` variant to
+  `SimpleType`, so that `T -> U` is now a representable type
+
 #### [0.13.0] - 2025-09-10
 
 - Support enum struct variants in `SimpleType`

@@ -8,7 +8,7 @@ pub use dhall::syntax::NumKind;
 use dhall::syntax::{Expr, ExprKind, Span};
 use dhall::Ctxt;
 
-use crate::{Error, ErrorKind, FromDhall, Result, ToDhall};
+use crate::{Error, ErrorKind, FromDhall, Function, Result, ToDhall};
 
 #[derive(Debug, Clone)]
 enum ValueKind {
@@ -111,6 +111,8 @@ pub enum SimpleValue {
     Record(BTreeMap<String, SimpleValue>),
     /// A union value (both the name of the variant and the variant's value) - `Left e`
     Union(String, Option<Box<SimpleValue>>),
+    /// A function, left unevaluated until it is applied - `λ(x : Natural) → x + 1`
+    Function(Function),
 }
 
 /// The type of a value that can be decoded by `serde_dhall`, e.g. `{ x: Bool, y: List Natural }`.
@@ -146,7 +148,7 @@ pub enum SimpleValue {
 /// `{ x: T, y: T }`  | `HashMap<String, T>`, structs
 /// `< x: T \| y: U >`  | enums
 /// `Prelude.Map.Type Text T`  | `HashMap<String, T>`, structs
-/// `T -> U`  | unsupported
+/// `T -> U`  | [`Function`]
 /// `Prelude.JSON.Type`  | unsupported
 /// `Prelude.Map.Type T U`  | unsupported
 ///
@@ -205,6 +207,8 @@ pub enum SimpleType {
     Record(HashMap<String, SimpleType>),
     /// Corresponds to the Dhall type `< x : T | y : U >`
     Union(HashMap<String, Option<SimpleType>>),
+    /// Corresponds to the Dhall type `T -> U`
+    Function(Box<SimpleType>, Box<SimpleType>),
 }
 
 impl Value {
@@ -213,11 +217,12 @@ impl Value {
         x: &Nir<'cx>,
         ty: &Nir<'cx>,
     ) -> Result<Self> {
-        Ok(if let Ok(val) = SimpleValue::from_nir(x) {
-            // The type must be simple if the value is simple.
-            let ty = SimpleType::from_nir(ty).unwrap();
+        Ok(if let Ok(val) = SimpleValue::from_nir(cx, x) {
+            // The type is simple whenever the value is, except for the function types that
+            // `SimpleType` cannot represent, e.g. `∀(a : Type) → a`.
+            let ty = SimpleType::from_nir_opt(ty);
             Value {
-                kind: ValueKind::Val(val, Some(ty)),
+                kind: ValueKind::Val(val, ty),
             }
         } else if let Ok(ty) = SimpleType::from_nir(x) {
             Value {
@@ -249,10 +254,10 @@ impl Value {
     }
 
     /// Converts a value back to the corresponding AST expression.
-    pub(crate) fn to_expr(&self) -> Expr {
+    pub(crate) fn to_expr(&self) -> Result<Expr> {
         match &self.kind {
-            ValueKind::Val(val, ty) => val.to_expr(ty.as_ref()).unwrap(),
-            ValueKind::Ty(ty) => ty.to_expr(),
+            ValueKind::Val(val, ty) => val.to_expr(ty.as_ref()),
+            ValueKind::Ty(ty) => Ok(ty.to_expr()),
         }
     }
 }
@@ -261,7 +266,10 @@ impl Value {
 struct NotSimpleValue;
 
 impl SimpleValue {
-    fn from_nir(nir: &Nir) -> StdResult<Self, NotSimpleValue> {
+    fn from_nir<'cx>(
+        cx: Ctxt<'cx>,
+        nir: &Nir<'cx>,
+    ) -> StdResult<Self, NotSimpleValue> {
         Ok(match nir.kind() {
             NirKind::Num(lit) => SimpleValue::Num(lit.clone()),
             NirKind::TextLit(x) => SimpleValue::Text(
@@ -270,7 +278,7 @@ impl SimpleValue {
             ),
             NirKind::EmptyOptionalLit(_) => SimpleValue::Optional(None),
             NirKind::NEOptionalLit(x) => {
-                SimpleValue::Optional(Some(Box::new(Self::from_nir(x)?)))
+                SimpleValue::Optional(Some(Box::new(Self::from_nir(cx, x)?)))
             }
             NirKind::EmptyListLit(t) => {
                 // Detect and handle the special records that make assoc maps
@@ -291,7 +299,7 @@ impl SimpleValue {
                         && kvs.contains_key("mapKey")
                         && kvs.contains_key("mapValue")
                     {
-                        let convert_entry = |x: &Nir| match x.kind() {
+                        let convert_entry = |x: &Nir<'cx>| match x.kind() {
                             NirKind::RecordLit(kvs) => {
                                 let k = match kvs.get("mapKey").unwrap().kind()
                                 {
@@ -307,6 +315,7 @@ impl SimpleValue {
                                     ),
                                 };
                                 let v = Self::from_nir(
+                                    cx,
                                     kvs.get("mapValue").unwrap(),
                                 )?;
                                 Ok((k, v))
@@ -322,23 +331,30 @@ impl SimpleValue {
                 }
                 SimpleValue::List(
                     xs.iter()
-                        .map(Self::from_nir)
+                        .map(|x| Self::from_nir(cx, x))
                         .collect::<StdResult<_, _>>()?,
                 )
             }
             NirKind::RecordLit(kvs) => SimpleValue::Record(
                 kvs.iter()
-                    .map(|(k, v)| Ok((k.to_string(), Self::from_nir(v)?)))
+                    .map(|(k, v)| Ok((k.to_string(), Self::from_nir(cx, v)?)))
                     .collect::<StdResult<_, _>>()?,
             ),
             NirKind::UnionLit(field, x, _) => SimpleValue::Union(
                 field.into(),
-                Some(Box::new(Self::from_nir(x)?)),
+                Some(Box::new(Self::from_nir(cx, x)?)),
             ),
             NirKind::UnionConstructor(field, ty)
                 if ty.get(field).map(|f| f.is_some()) == Some(false) =>
             {
                 SimpleValue::Union(field.into(), None)
+            }
+            // A lambda, or a builtin that is still waiting for arguments (e.g. `Natural/subtract
+            // 1`). Both are functions we can defer and apply later.
+            NirKind::LamClosure { .. } | NirKind::AppliedBuiltin(_) => {
+                SimpleValue::Function(
+                    Function::from_nir(cx, nir).map_err(|_| NotSimpleValue)?,
+                )
             }
             _ => return Err(NotSimpleValue),
         })
@@ -346,7 +362,11 @@ impl SimpleValue {
 
     // Converts this to `Hir`, using the optional type annotation. Without the type, things like
     // empty lists and unions will fail to convert.
-    fn to_hir<'cx>(&self, ty: Option<&SimpleType>) -> Result<Hir<'cx>> {
+    fn to_hir<'cx>(
+        &self,
+        cx: Ctxt<'cx>,
+        ty: Option<&SimpleType>,
+    ) -> Result<Hir<'cx>> {
         use SimpleType as T;
         use SimpleValue as V;
         let hir = |k| Hir::new(HirKind::Expr(k), Span::Artificial);
@@ -364,6 +384,11 @@ impl SimpleValue {
             )))
         };
         let kind = match (self, ty) {
+            // A function is already a complete expression; the annotation adds nothing, so we only
+            // check that it is a function type at all.
+            (V::Function(f), None)
+            | (V::Function(f), Some(T::Function(..))) => return f.to_hir(cx),
+
             (V::Num(num @ NumKind::Bool(_)), Some(T::Bool))
             | (V::Num(num @ NumKind::Natural(_)), Some(T::Natural))
             | (V::Num(num @ NumKind::Integer(_)), Some(T::Integer))
@@ -380,9 +405,11 @@ impl SimpleValue {
                     t.to_hir(),
                 ))
             }
-            (V::Optional(Some(v)), None) => ExprKind::SomeLit(v.to_hir(None)?),
+            (V::Optional(Some(v)), None) => {
+                ExprKind::SomeLit(v.to_hir(cx, None)?)
+            }
             (V::Optional(Some(v)), Some(T::Optional(t))) => {
-                ExprKind::SomeLit(v.to_hir(Some(t))?)
+                ExprKind::SomeLit(v.to_hir(cx, Some(t))?)
             }
 
             (V::List(v), None) if v.is_empty() => return Err(type_missing()),
@@ -393,21 +420,27 @@ impl SimpleValue {
                 ))))
             }
             (V::List(v), None) => ExprKind::NEListLit(
-                v.iter().map(|v| v.to_hir(None)).collect::<Result<_>>()?,
+                v.iter()
+                    .map(|v| v.to_hir(cx, None))
+                    .collect::<Result<_>>()?,
             ),
             (V::List(v), Some(T::List(t))) => ExprKind::NEListLit(
-                v.iter().map(|v| v.to_hir(Some(t))).collect::<Result<_>>()?,
+                v.iter()
+                    .map(|v| v.to_hir(cx, Some(t)))
+                    .collect::<Result<_>>()?,
             ),
 
             (V::Record(v), None) => ExprKind::RecordLit(
                 v.iter()
-                    .map(|(k, v)| Ok((k.clone().into(), v.to_hir(None)?)))
+                    .map(|(k, v)| Ok((k.clone().into(), v.to_hir(cx, None)?)))
                     .collect::<Result<_>>()?,
             ),
             (V::Record(v), Some(T::Record(t))) => ExprKind::RecordLit(
                 v.iter()
                     .map(|(k, v)| match t.get(k) {
-                        Some(t) => Ok((k.clone().into(), v.to_hir(Some(t))?)),
+                        Some(t) => {
+                            Ok((k.clone().into(), v.to_hir(cx, Some(t))?))
+                        }
                         None => Err(type_error()),
                     })
                     .collect::<Result<_>>()?,
@@ -421,7 +454,7 @@ impl SimpleValue {
                             ty.unwrap().to_hir(),
                             variant.clone().into(),
                         ))),
-                        v.to_hir(Some(variant_t))?,
+                        v.to_hir(cx, Some(variant_t))?,
                     )),
                     _ => return Err(type_error()),
                 }
@@ -442,7 +475,7 @@ impl SimpleValue {
     }
     pub(crate) fn into_value(self, ty: Option<&SimpleType>) -> Result<Value> {
         // Check that the value is printable with the given type.
-        self.to_hir(ty)?;
+        Ctxt::with_new(|cx| self.to_hir(cx, ty).map(|_| ()))?;
         Ok(Value {
             kind: ValueKind::Val(self, ty.cloned()),
         })
@@ -451,7 +484,7 @@ impl SimpleValue {
     /// Converts back to the corresponding AST expression.
     pub(crate) fn to_expr(&self, ty: Option<&SimpleType>) -> Result<Expr> {
         Ctxt::with_new(|cx| {
-            Ok(self.to_hir(ty)?.to_expr(cx, Default::default()))
+            Ok(self.to_hir(cx, ty)?.to_expr(cx, Default::default()))
         })
     }
 }
@@ -460,6 +493,10 @@ impl SimpleValue {
 struct NotSimpleType;
 
 impl SimpleType {
+    pub(crate) fn from_nir_opt(nir: &Nir) -> Option<Self> {
+        Self::from_nir(nir).ok()
+    }
+
     fn from_nir(nir: &Nir) -> StdResult<Self, NotSimpleType> {
         Ok(match nir.kind() {
             NirKind::BuiltinType(b) => match b {
@@ -491,6 +528,16 @@ impl SimpleType {
                     })
                     .collect::<StdResult<_, _>>()?,
             ),
+            NirKind::PiClosure { annot, closure, .. } => {
+                // `remove_binder` hands back the body with the bound variable left free. If the
+                // type is dependent, e.g. `∀(a : Type) → List a`, that variable shows up as a
+                // `Var` and the recursive call rejects it, which is what we want.
+                let input = Self::from_nir(annot)?;
+                let output = Self::from_nir(
+                    &closure.remove_binder().ok_or(NotSimpleType)?,
+                )?;
+                SimpleType::Function(Box::new(input), Box::new(output))
+            }
             _ => return Err(NotSimpleType),
         })
     }
@@ -523,6 +570,10 @@ impl SimpleType {
                     })
                     .collect(),
             ),
+            // `A -> B` is sugar for `∀(_ : A) → B`.
+            SimpleType::Function(input, output) => {
+                ExprKind::Pi("_".into(), input.to_hir(), output.to_hir())
+            }
         })
     }
 
@@ -581,7 +632,12 @@ impl std::fmt::Display for Value {
         &self,
         f: &mut std::fmt::Formatter,
     ) -> StdResult<(), std::fmt::Error> {
-        self.to_expr().fmt(f)
+        match self.to_expr() {
+            Ok(expr) => expr.fmt(f),
+            // A `Value` always carries a type it is printable with, so this is unreachable in
+            // practice; falling back beats panicking in a `Display` impl.
+            Err(_) => write!(f, "{:?}", self.kind),
+        }
     }
 }
 

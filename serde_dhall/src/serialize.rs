@@ -49,13 +49,19 @@ where
     T: ser::Serialize,
 {
     fn to_dhall(&self, ty: Option<&SimpleType>) -> Result<Value> {
-        let sval: SimpleValue = self.serialize(Serializer)?;
+        let sval: SimpleValue = self.serialize(Serializer::default())?;
         sval.into_value(ty)
     }
 }
 
 #[derive(Default, Clone, Copy)]
-struct Serializer;
+struct Serializer {
+    /// Set while serializing the payload of a [`Function`]'s newtype struct, which is the one
+    /// place where a byte array is meaningful to us.
+    ///
+    /// [`Function`]: crate::Function
+    expect_function: bool,
+}
 
 impl ser::Serializer for Serializer {
     type Ok = SimpleValue;
@@ -113,7 +119,10 @@ impl ser::Serializer for Serializer {
         Ok(Text(v.to_owned()))
     }
 
-    fn serialize_bytes(self, _v: &[u8]) -> Result<Self::Ok> {
+    fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok> {
+        if self.expect_function {
+            return Ok(Function(crate::Function::from_binary(v)?));
+        }
         Err(ErrorKind::Serialize(
             "Unsupported data for serialization: byte array".to_owned(),
         )
@@ -127,7 +136,11 @@ impl ser::Serializer for Serializer {
     where
         T: ?Sized + ser::Serialize,
     {
-        Ok(Optional(Some(Box::new(v.serialize(self)?))))
+        // `expect_function` applies to the newtype struct's payload only, so it must not carry
+        // over into nested values.
+        Ok(Optional(Some(Box::new(
+            v.serialize(Serializer::default())?,
+        ))))
     }
 
     fn serialize_unit(self) -> Result<Self::Ok> {
@@ -139,12 +152,17 @@ impl ser::Serializer for Serializer {
     }
     fn serialize_newtype_struct<T>(
         self,
-        _name: &'static str,
-        _value: &T,
+        name: &'static str,
+        value: &T,
     ) -> Result<Self::Ok>
     where
         T: ?Sized + ser::Serialize,
     {
+        if name == crate::function::FUNCTION_TOKEN {
+            return value.serialize(Serializer {
+                expect_function: true,
+            });
+        }
         Err(ErrorKind::Serialize(
             "Unsupported data for serialization: newtype struct".to_owned(),
         )
@@ -176,7 +194,7 @@ impl ser::Serializer for Serializer {
     where
         T: ?Sized + ser::Serialize,
     {
-        let value = value.serialize(self)?;
+        let value = value.serialize(Serializer::default())?;
         Ok(Union(variant.to_owned(), Some(Box::new(value))))
     }
     fn serialize_tuple_variant(
@@ -238,7 +256,7 @@ impl ser::SerializeSeq for SeqSerializer {
     where
         T: ?Sized + ser::Serialize,
     {
-        self.0.push(value.serialize(Serializer)?);
+        self.0.push(value.serialize(Serializer::default())?);
         Ok(())
     }
 
@@ -258,7 +276,7 @@ impl ser::SerializeTuple for TupleSerializer {
     where
         T: ?Sized + ser::Serialize,
     {
-        self.0.push(value.serialize(Serializer)?);
+        self.0.push(value.serialize(Serializer::default())?);
         Ok(())
     }
 
@@ -288,7 +306,7 @@ impl ser::SerializeMap for MapSerializer {
     where
         T: ?Sized + ser::Serialize,
     {
-        let key = match key.serialize(Serializer)? {
+        let key = match key.serialize(Serializer::default())? {
             Text(key) => key,
             _ => return Err(<Error as ser::Error>::custom("not a string")),
         };
@@ -304,7 +322,7 @@ impl ser::SerializeMap for MapSerializer {
     where
         T: ?Sized + ser::Serialize,
     {
-        let val: SimpleValue = val.serialize(Serializer)?;
+        let val: SimpleValue = val.serialize(Serializer::default())?;
         if let Some(key) = self.key.take() {
             self.map.insert(key, val);
         } else {
@@ -329,7 +347,7 @@ impl ser::SerializeStruct for StructSerializer {
     where
         T: ?Sized + ser::Serialize,
     {
-        let val: SimpleValue = val.serialize(Serializer)?;
+        let val: SimpleValue = val.serialize(Serializer::default())?;
         self.0.insert(key.into(), val);
         Ok(())
     }
@@ -352,7 +370,7 @@ impl ser::SerializeStructVariant for StructVariantSerializer {
     where
         T: ?Sized + ser::Serialize,
     {
-        let val: SimpleValue = val.serialize(Serializer)?;
+        let val: SimpleValue = val.serialize(Serializer::default())?;
         self.value.insert(key.into(), val);
         Ok(())
     }
@@ -417,6 +435,7 @@ impl serde::ser::Serialize for SimpleValue {
                     x,
                 )
             }
+            Function(f) => f.serialize(serializer),
         }
     }
 }
