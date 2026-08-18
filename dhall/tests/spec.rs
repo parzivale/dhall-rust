@@ -573,13 +573,12 @@ fn ignore_test(variant: SpecTestKind, path: &str) -> bool {
 
     // Failing for now, we should fix that.
     let is_failing_for_now = false
-        // TODO: fails because of caching issues.
+        // Imported values round-trip through `Nir`, which does not retain
+        // binder names (see the "manage to keep the Nir around" TODO in
+        // resolve.rs), so a type inferred from an import comes back
+        // alpha-normalized: `Type -> Optional _ -> Bool` rather than
+        // `forall(a : Type) -> forall(xs : Optional a) -> Bool`.
         || path == "type-inference/success/prelude"
-        // TODO: only recover 404-like import errors
-        || path == "import/failure/unit/DontRecoverCycle"
-        || path == "import/failure/unit/DontRecoverTypeError"
-        || path == "import/failure/unit/DontRecoverHashMismatch"
-        || path == "import/failure/unit/DontRecoverParseError"
         // TODO: cors
         || path == "import/success/unit/cors/AllowedAll"
         || path == "import/success/unit/cors/Prelude"

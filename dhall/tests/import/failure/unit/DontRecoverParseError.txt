@@ -1,0 +1,10 @@
+Type error: error: error
+ --> <current file>:1:1
+  |
+1 | ../../data/doesNotParse.dhall ? 0
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  --> 2:1
+  |
+2 | 
+  | ^---
+  |
+  = expected expression

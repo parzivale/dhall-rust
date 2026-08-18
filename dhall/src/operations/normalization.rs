@@ -69,6 +69,14 @@ fn normalize_binop<'cx>(o: BinOp, x: Nir<'cx>, y: Nir<'cx>) -> Ret<'cx> {
         (TextAppend, _, NirKind::TextLit(y)) => ret_kind(NirKind::TextLit(
             TextLit::interpolate(x.clone()).concat(y),
         )),
+        // Neither side is a literal. The standard still normalises this to a
+        // text literal of two interpolations, rather than leaving a `++` node:
+        // `l ++ r` is `"${l}${r}"`. Without this the normal form differs from
+        // every other implementation, and so does the semantic hash.
+        (TextAppend, _, _) => ret_kind(NirKind::TextLit(
+            TextLit::interpolate(x.clone())
+                .concat(&TextLit::interpolate(y.clone())),
+        )),
 
         (RightBiasedRecordMerge, _, RecordLit(kvs)) if kvs.is_empty() => {
             ret_nir(x)

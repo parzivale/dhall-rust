@@ -11,6 +11,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug)]
 pub struct Error {
     kind: ErrorKind,
+    /// Whether the `?` operator may recover from this error.
+    ///
+    /// Carried alongside the kind because a failed import is re-wrapped as a
+    /// type error for display, which discards what actually went wrong.
+    recoverable: bool,
 }
 
 #[derive(Debug)]
@@ -68,10 +73,35 @@ pub enum CacheError {
 
 impl Error {
     pub fn new(kind: ErrorKind) -> Self {
-        Error { kind }
+        // Only an import that could not be *retrieved* is recoverable. One that
+        // was retrieved but does not parse or typecheck, a cyclic import, and a
+        // failed integrity check must all propagate, or `?` would silently
+        // paper over a corrupt or malicious dependency.
+        let recoverable = matches!(
+            kind,
+            ErrorKind::IO(_)
+                | ErrorKind::Resolve(
+                    ImportError::Missing
+                        | ImportError::MissingEnvVar
+                        | ImportError::MissingHome
+                )
+        );
+        Error { kind, recoverable }
     }
     pub fn kind(&self) -> &ErrorKind {
         &self.kind
+    }
+    /// Whether the `?` operator may recover from this error.
+    pub fn is_recoverable(&self) -> bool {
+        self.recoverable
+    }
+    /// Take this error's recoverability from `original`.
+    ///
+    /// For re-wrapping a failure in a more informative error without deciding
+    /// afresh whether `?` may swallow it.
+    pub fn inheriting_recoverability(mut self, original: &Error) -> Self {
+        self.recoverable = original.recoverable;
+        self
     }
 }
 

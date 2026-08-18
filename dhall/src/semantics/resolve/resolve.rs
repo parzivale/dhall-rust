@@ -406,11 +406,19 @@ fn fetch_import<'cx>(
         });
         let typed = match res {
             Ok(typed) => typed,
-            Err(e) => mkerr(
-                ErrorBuilder::new("error")
-                    .span_err(span.clone(), e.to_string())
-                    .format(),
-            )?,
+            Err(e) => {
+                // Wrapping the failure to point at the import site discards its
+                // kind, so carry the recoverability decision across by hand;
+                // `?` further out still needs it.
+                let wrapped: Error = mkerr::<(), _>(
+                    ErrorBuilder::new("error")
+                        .span_err(span.clone(), e.to_string())
+                        .format(),
+                )
+                .unwrap_err()
+                .into();
+                return Err(wrapped.inheriting_recoverability(&e));
+            }
         };
 
         let res_id = cx.push_import_result(typed);
@@ -515,11 +523,13 @@ fn resolve_nodes<'cx>(
             }
             ImportNode::Alternative(alt) => {
                 let alt = &env.cx()[alt];
-                if resolve_nodes(env, &alt.left_imports).is_ok() {
-                    alt.set_selected(true);
-                } else {
-                    resolve_nodes(env, &alt.right_imports)?;
-                    alt.set_selected(false);
+                match resolve_nodes(env, &alt.left_imports) {
+                    Ok(()) => alt.set_selected(true),
+                    Err(e) if e.is_recoverable() => {
+                        resolve_nodes(env, &alt.right_imports)?;
+                        alt.set_selected(false);
+                    }
+                    Err(e) => return Err(e),
                 }
             }
         }
