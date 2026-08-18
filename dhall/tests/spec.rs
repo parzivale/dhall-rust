@@ -120,6 +120,18 @@ impl TestFile {
     pub fn normalize<'cx>(&self, cx: Ctxt<'cx>) -> Result<Normalized<'cx>> {
         Ok(self.typecheck(cx)?.normalize(cx))
     }
+    /// Parse, resolve and normalize, skipping the typecheck.
+    ///
+    /// The standard's normalization judgements are defined over untyped terms,
+    /// and a few fixtures are deliberately ill-typed -- `Sort` has no type at
+    /// all, and FunctionNestedBindingXXFree is annotated "this test has free
+    /// variables, so it doesn't typecheck".
+    pub fn normalize_untyped<'cx>(
+        &self,
+        cx: Ctxt<'cx>,
+    ) -> Result<Normalized<'cx>> {
+        Ok(self.resolve(cx)?.normalize_untyped(cx))
+    }
 
     /// If UPDATE_TEST_FILES is `true`, we overwrite the output files with our own output.
     fn force_update() -> bool {
@@ -515,10 +527,7 @@ fn ignore_test(variant: SpecTestKind, path: &str) -> bool {
         || path == "binary-decode/success/unit/IntegerBigPositive"
         || path == "binary-decode/success/unit/NaturalBig"
         || path == "semantic-hash/success/simple/integerToDouble"
-        || path == "normalization/success/simple/integerToDouble"
-        // These don't typecheck but we always tck before normalizing.
-        || path == "alpha-normalization/success/unit/FunctionNestedBindingXXFree"
-        || path == "normalization/success/unit/Sort";
+        || path == "normalization/success/simple/integerToDouble";
 
     // Fails because of Windows-specific shenanigans.
     let fails_on_windows = false
@@ -676,11 +685,15 @@ fn run_test(test: &SpecTest) -> Result<()> {
                 expected.compare_ui(err)?;
             }
             Normalization => {
-                let expr = expr.normalize(cx)?;
+                let expr = expr.normalize_untyped(cx)?;
                 expected.compare(expr.to_expr(cx))?;
             }
             AlphaNormalization => {
-                let expr = expr.normalize(cx)?.to_expr_alpha(cx);
+                // The standard's alpha-normalization judgement is syntactic and
+                // separate from beta-normalization, and every fixture is already
+                // in beta-normal form. Renaming without evaluating is what lets
+                // the deliberately ill-typed FunctionNestedBindingXXFree work.
+                let expr = expr.resolve(cx)?.to_expr_alpha(cx);
                 expected.compare(expr)?;
             }
         }

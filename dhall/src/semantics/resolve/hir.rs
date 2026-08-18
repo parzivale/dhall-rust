@@ -108,6 +108,14 @@ fn hir_to_expr<'cx>(
     let kind = match hir.kind() {
         HirKind::Var(v) if opts.alpha => ExprKind::Var(V("_".into(), v.idx())),
         HirKind::Var(v) => ExprKind::Var(env.label_var(*v)),
+        HirKind::MissingVar(v) if opts.alpha => {
+            // Alpha-normalization renames every binder to `_`, so the binders
+            // this free variable counted past no longer share its name. Drop
+            // them from its index: with `\(x : Bool) -> \(x : Bool) -> x@2`,
+            // the free `x@2` becomes plain `x`.
+            let shadowing = env.count_named(&v.0);
+            ExprKind::Var(V(v.0.clone(), v.1.saturating_sub(shadowing)))
+        }
         HirKind::MissingVar(v) => ExprKind::Var(v.clone()),
         HirKind::Import(import) => {
             let typed = cx[import].unwrap_result();

@@ -117,9 +117,33 @@ impl<'cx> Resolved<'cx> {
     ) -> Result<Typed<'cx>, TypeError> {
         Ok(Typed::from_tir(typecheck_with(cx, &self.0, ty)?))
     }
+    /// Normalize without typechecking first.
+    ///
+    /// The standard defines normalization over untyped terms, so an expression
+    /// that does not typecheck still has a normal form. Prefer
+    /// [`typecheck`](Resolved::typecheck) followed by
+    /// [`Typed::normalize`]: an ill-typed expression can make evaluation
+    /// diverge or panic, and this skips the check that would have caught it.
+    ///
+    /// For a well-typed expression the two agree, since `Typed::normalize`
+    /// does not consult the type either.
+    pub fn normalize_untyped(&self, cx: Ctxt<'cx>) -> Normalized<'cx> {
+        Normalized(self.0.eval_closed_expr(cx))
+    }
+
     /// Converts a value back to the corresponding AST expression.
     pub fn to_expr(&self, cx: Ctxt<'cx>) -> Expr {
         self.0.to_expr_noopts(cx)
+    }
+
+    /// Alpha-normalize: convert back to an AST expression with every bound
+    /// variable renamed to `_`.
+    ///
+    /// This is purely syntactic, so unlike [`Typed::normalize`] followed by
+    /// [`Normalized::to_expr_alpha`] it neither typechecks nor evaluates, and
+    /// works on expressions with free variables.
+    pub fn to_expr_alpha(&self, cx: Ctxt<'cx>) -> Expr {
+        self.0.to_expr_alpha(cx)
     }
 }
 

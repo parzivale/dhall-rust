@@ -37,6 +37,10 @@ impl NameEnv {
     pub fn insert_mut(&mut self, x: &Label) {
         self.names.push(x.clone())
     }
+    /// How many binders currently in scope carry this name.
+    pub fn count_named(&self, x: &Label) -> usize {
+        self.names.iter().filter(|name| *name == x).count()
+    }
     pub fn remove_mut(&mut self) {
         self.names.pop();
     }
