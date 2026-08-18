@@ -1,3 +1,5 @@
+use std::convert::TryFrom;
+
 use dhall::error::Error;
 use dhall::semantics::*;
 use dhall::syntax::*;
@@ -10,13 +12,16 @@ use dhall::*;
 fn manual_function_application() {
     /// Apply a `Natural -> Natural` function to an argument.
     fn apply_natnat_fn<'cx>(f: &Nir<'cx>, n: u64) -> u64 {
-        // Convert the number to the internal representation.
-        let n_nir = Nir::from_kind(NirKind::Num(NumKind::Natural(n)));
+        // Convert the number to the internal representation. `Natural` is
+        // arbitrary-precision, so this widens rather than being a plain `u64`.
+        let n_nir = Nir::from_kind(NirKind::Num(NumKind::Natural(n.into())));
         // Apply `f` to `n`.
         let m_nir = f.app(n_nir);
-        // Convert from the internal representation.
+        // Convert from the internal representation. The result may not fit back
+        // into a `u64`, so narrowing it is fallible.
         match m_nir.kind() {
-            NirKind::Num(NumKind::Natural(m)) => *m,
+            NirKind::Num(NumKind::Natural(m)) => u64::try_from(m)
+                .expect("result does not fit in a u64"),
             _ => panic!("`f` was not `Natural -> Natural`"),
         }
     }

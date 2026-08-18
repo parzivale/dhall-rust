@@ -20,6 +20,8 @@ serde = { version = "1.0.229", features = ["derive"] }
 dhall = { version = "=0.13.0", path = "../dhall",  default-features = false }
 dhall_proc_macros = { version = "=0.6.1", path = "../dhall_proc_macros" }
 doc-comment = "0.3.4"
+# Dhall's Natural/Integer are unbounded; this converts them to Rust integers.
+num-traits = "0.2.19"
 url = "2.5.8"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]

@@ -56,9 +56,9 @@ pub struct Value {
 ///         r.insert(
 ///             "y".to_string(),
 ///             SimpleValue::List(vec![
-///                 SimpleValue::Num(NumKind::Natural(1)),
-///                 SimpleValue::Num(NumKind::Natural(2)),
-///                 SimpleValue::Num(NumKind::Natural(3)),
+///                 SimpleValue::Num(NumKind::Natural(1u32.into())),
+///                 SimpleValue::Num(NumKind::Natural(2u32.into())),
+///                 SimpleValue::Num(NumKind::Natural(3u32.into())),
 ///             ])
 ///         );
 ///         r
@@ -87,8 +87,8 @@ pub struct Value {
 ///     serde_dhall::from_str("{ x = 1, y = 2 }").parse()?;
 ///
 /// let mut map = BTreeMap::new();
-/// map.insert("x".to_string(), SimpleValue::Num(NumKind::Natural(1)));
-/// map.insert("y".to_string(), SimpleValue::Num(NumKind::Natural(2)));
+/// map.insert("x".to_string(), SimpleValue::Num(NumKind::Natural(1u32.into())));
+/// map.insert("y".to_string(), SimpleValue::Num(NumKind::Natural(2u32.into())));
 /// assert_eq!(value, SimpleValue::Record(map));
 /// # Ok(())
 /// # }

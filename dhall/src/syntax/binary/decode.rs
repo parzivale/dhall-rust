@@ -1,4 +1,6 @@
 use itertools::Itertools;
+use minicbor::data::IanaTag;
+use num_bigint::Sign;
 use std::collections::BTreeMap;
 use std::iter::FromIterator;
 
@@ -26,6 +28,8 @@ pub enum Value {
     Bool(bool),
     U64(u64),
     I64(i64),
+    /// An integer too large for `U64`/`I64`, carried by a CBOR bignum tag.
+    Big(Integer),
     F64(f64),
     String(String),
     Array(Vec<Value>),
@@ -84,9 +88,15 @@ impl<'b> minicbor::Decode<'b, ()> for Value {
             }
             Type::Tag => {
                 let tag = d.tag()?;
-                // That's the cbor self-description tag.
                 if tag.as_u64() == 55799 {
+                    // That's the cbor self-description tag.
                     Value::decode(d, ctx)?
+                } else if tag == IanaTag::PosBignum.tag() {
+                    Value::Big(Integer::from_bytes_be(Sign::Plus, d.bytes()?))
+                } else if tag == IanaTag::NegBignum.tag() {
+                    // A negative bignum stores `m`; the value is `-1 - m`.
+                    let m = Integer::from_bytes_be(Sign::Plus, d.bytes()?);
+                    Value::Big(-m - 1)
                 } else {
                     throw!("Unknown cbor tag: {tag:?}")
                 }
@@ -312,9 +322,19 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                 let z = cbor_value_to_dhall(&z)?;
                 Op(BoolIf(x, y, z))
             }
-            [U64(15), U64(x)] => Num(NumKind::Natural(*x as Natural)),
-            [U64(16), U64(x)] => Num(NumKind::Integer(*x as Integer)),
-            [U64(16), I64(x)] => Num(NumKind::Integer(*x as Integer)),
+            [U64(15), U64(x)] => Num(NumKind::Natural(Natural::from(*x))),
+            [U64(15), Big(x)] => {
+                let n = x.to_biguint().ok_or_else(|| {
+                    DecodeError::WrongFormatError(format!(
+                        "negative bignum for a Natural: {}",
+                        x
+                    ))
+                })?;
+                Num(NumKind::Natural(n))
+            }
+            [U64(16), U64(x)] => Num(NumKind::Integer(Integer::from(*x))),
+            [U64(16), I64(x)] => Num(NumKind::Integer(Integer::from(*x))),
+            [U64(16), Big(x)] => Num(NumKind::Integer(x.clone())),
             [U64(18), String(first), rest @ ..] => {
                 TextLit(InterpolatedText::from((
                     first.clone(),

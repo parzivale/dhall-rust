@@ -7,8 +7,12 @@ use crate::semantics::Universe;
 use crate::syntax::visitor;
 use crate::syntax::*;
 
-pub type Integer = i64;
-pub type Natural = u64;
+/// Dhall's `Integer` is unbounded, so this is arbitrary-precision rather than
+/// an `i64`. Note the CBOR encoding still uses a machine integer where the
+/// value fits, falling back to a bignum tag; see `syntax::binary`.
+pub type Integer = num_bigint::BigInt;
+/// Dhall's `Natural` is unbounded. See [`Integer`].
+pub type Natural = num_bigint::BigUint;
 pub type Double = NaiveDouble;
 
 /// Double with bitwise equality

@@ -545,14 +545,6 @@ fn ignore_test(variant: SpecTestKind, path: &str) -> bool {
     use SpecTestKind::*;
 
     // This will never succeed because of a specificity of dhall-rust.
-    let is_meant_to_fail = false
-        // We don't support bignums
-        || path == "binary-decode/success/unit/IntegerBigNegative"
-        || path == "binary-decode/success/unit/IntegerBigPositive"
-        || path == "binary-decode/success/unit/NaturalBig"
-        || path == "semantic-hash/success/simple/integerToDouble"
-        || path == "normalization/success/simple/integerToDouble";
-
     // Fails because of Windows-specific shenanigans.
     let fails_on_windows = false
         // TODO: git changes newlines on windows
@@ -606,7 +598,6 @@ fn ignore_test(variant: SpecTestKind, path: &str) -> bool {
 
     (cfg!(debug_assertions) && is_too_slow)
         || (cfg!(windows) && fails_on_windows)
-        || is_meant_to_fail
         || is_spec_error
         || is_failing_for_now
 }

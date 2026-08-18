@@ -1,4 +1,6 @@
 use itertools::Itertools;
+use num_bigint::BigUint;
+use num_traits::{One, Zero};
 use std::collections::HashMap;
 use std::iter::once;
 
@@ -7,25 +9,6 @@ use crate::semantics::{
     merge_maps, ret_kind, ret_nir, ret_op, ret_ref, Nir, NirKind, Ret, TextLit,
 };
 use crate::syntax::{ExprKind, Label, NumKind};
-
-/// Unwrap a checked `Natural` arithmetic result, or fail loudly.
-///
-/// Dhall's `Natural` is unbounded, but it is represented here as a `u64`.
-/// Normalization has no error channel, so an out-of-range result can only be
-/// reported by panicking. That is still an improvement on what this did before:
-/// wrapping silently to `0` in release while panicking in debug, so the same
-/// expression gave different answers depending on the build profile.
-fn checked_natural(result: Option<u64>, op: &str, x: &u64, y: &u64) -> u64 {
-    result.unwrap_or_else(|| {
-        // Explicit args rather than inline `{x}`: on edition 2018 a
-        // single-argument `panic!` passes the string through unformatted.
-        panic!(
-            "Natural overflow: `{} {} {}` does not fit in a u64. Dhall's \
-             Natural is unbounded, but this implementation is not.",
-            x, op, y
-        )
-    })
-}
 
 fn normalize_binop<'cx>(o: BinOp, x: Nir<'cx>, y: Nir<'cx>) -> Ret<'cx> {
     use BinOp::*;
@@ -52,17 +35,21 @@ fn normalize_binop<'cx>(o: BinOp, x: Nir<'cx>, y: Nir<'cx>) -> Ret<'cx> {
         (BoolNE, Num(Bool(x)), Num(Bool(y))) => ret_kind(Num(Bool(x != y))),
         (BoolNE, _, _) if x == y => ret_kind(Num(Bool(false))),
 
-        (NaturalPlus, Num(Natural(0)), _) => ret_nir(y),
-        (NaturalPlus, _, Num(Natural(0))) => ret_nir(x),
+        (NaturalPlus, Num(Natural(n)), _) if n.is_zero() => ret_nir(y),
+        (NaturalPlus, _, Num(Natural(n))) if n.is_zero() => ret_nir(x),
         (NaturalPlus, Num(Natural(x)), Num(Natural(y))) => {
-            ret_kind(Num(Natural(checked_natural(x.checked_add(*y), "+", x, y))))
+            ret_kind(Num(Natural(x + y)))
         }
-        (NaturalTimes, Num(Natural(0)), _) => ret_kind(Num(Natural(0))),
-        (NaturalTimes, _, Num(Natural(0))) => ret_kind(Num(Natural(0))),
-        (NaturalTimes, Num(Natural(1)), _) => ret_nir(y),
-        (NaturalTimes, _, Num(Natural(1))) => ret_nir(x),
+        (NaturalTimes, Num(Natural(n)), _) if n.is_zero() => {
+            ret_kind(Num(Natural(BigUint::zero())))
+        }
+        (NaturalTimes, _, Num(Natural(n))) if n.is_zero() => {
+            ret_kind(Num(Natural(BigUint::zero())))
+        }
+        (NaturalTimes, Num(Natural(n)), _) if n.is_one() => ret_nir(y),
+        (NaturalTimes, _, Num(Natural(n))) if n.is_one() => ret_nir(x),
         (NaturalTimes, Num(Natural(x)), Num(Natural(y))) => {
-            ret_kind(Num(Natural(checked_natural(x.checked_mul(*y), "*", x, y))))
+            ret_kind(Num(Natural(x * y)))
         }
 
         (ListAppend, EmptyListLit(_), _) => ret_nir(y),

@@ -1,6 +1,11 @@
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 
+// Referred to by their crate paths: `Natural` and `Integer` are also NumKind
+// variants, which are in scope here and would shadow the type names.
+use num_bigint::{BigUint, Sign};
+use num_traits::{ToPrimitive, Zero};
+
 use crate::operations::{BinOp, OpKind};
 use crate::semantics::{nze, Hir, HirKind, Nir, NirKind, NzEnv, VarEnv};
 use crate::syntax::Const::Type;
@@ -293,7 +298,7 @@ macro_rules! make_closure {
         rc(ExprKind::Op(OpKind::BinOp(
             BinOp::NaturalPlus,
             make_closure!($($v)*),
-            rc(ExprKind::Num(NumKind::Natural(1)))
+            rc(ExprKind::Num(NumKind::Natural(BigUint::from(1u32))))
         )))
     };
     ([ $($head:tt)* ] # $($tail:tt)*) => {{
@@ -346,19 +351,19 @@ fn apply_builtin<'cx>(
             Ret::NirKind(EmptyOptionalLit(t.clone()))
         }
         (Builtin::NaturalIsZero, [n]) => match &*n.kind() {
-            Num(Natural(n)) => Ret::NirKind(Num(Bool(*n == 0))),
+            Num(Natural(n)) => Ret::NirKind(Num(Bool(n.is_zero()))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalEven, [n]) => match &*n.kind() {
-            Num(Natural(n)) => Ret::NirKind(Num(Bool(*n % 2 == 0))),
+            Num(Natural(n)) => Ret::NirKind(Num(Bool(!n.bit(0)))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalOdd, [n]) => match &*n.kind() {
-            Num(Natural(n)) => Ret::NirKind(Num(Bool(*n % 2 != 0))),
+            Num(Natural(n)) => Ret::NirKind(Num(Bool(n.bit(0)))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalToInteger, [n]) => match &*n.kind() {
-            Num(Natural(n)) => Ret::NirKind(Num(Integer(*n as i64))),
+            Num(Natural(n)) => Ret::NirKind(Num(Integer(n.clone().into()))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalShow, [n]) => match &*n.kind() {
@@ -366,17 +371,20 @@ fn apply_builtin<'cx>(
             _ => Ret::DoneAsIs,
         },
         (Builtin::NaturalSubtract, [a, b]) => match (&*a.kind(), &*b.kind()) {
-            (Num(Natural(a)), Num(Natural(b))) => {
-                Ret::NirKind(Num(Natural(if b > a { b - a } else { 0 })))
+            // Truncated subtraction: `a - b` is 0 when it would go negative.
+            (Num(Natural(a)), Num(Natural(b))) => Ret::NirKind(Num(Natural(
+                if b > a { b - a } else { BigUint::zero() },
+            ))),
+            (Num(Natural(a)), _) if a.is_zero() => Ret::Nir(b.clone()),
+            (_, Num(Natural(b))) if b.is_zero() => {
+                Ret::NirKind(Num(Natural(BigUint::zero())))
             }
-            (Num(Natural(0)), _) => Ret::Nir(b.clone()),
-            (_, Num(Natural(0))) => Ret::NirKind(Num(Natural(0))),
-            _ if a == b => Ret::NirKind(Num(Natural(0))),
+            _ if a == b => Ret::NirKind(Num(Natural(BigUint::zero()))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::IntegerShow, [n]) => match &*n.kind() {
             Num(Integer(n)) => {
-                let s = if *n < 0 {
+                let s = if n.sign() == Sign::Minus {
                     n.to_string()
                 } else {
                     format!("+{}", n)
@@ -386,9 +394,11 @@ fn apply_builtin<'cx>(
             _ => Ret::DoneAsIs,
         },
         (Builtin::IntegerToDouble, [n]) => match &*n.kind() {
-            Num(Integer(n)) => {
-                Ret::NirKind(Num(Double(NaiveDouble::from(*n as f64))))
-            }
+            // `to_f64` saturates to +/-infinity rather than failing, which is
+            // what the standard asks for on values beyond Double's range.
+            Num(Integer(n)) => Ret::NirKind(Num(Double(NaiveDouble::from(
+                n.to_f64().unwrap_or(f64::INFINITY),
+            )))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::IntegerNegate, [n]) => match &*n.kind() {
@@ -396,9 +406,10 @@ fn apply_builtin<'cx>(
             _ => Ret::DoneAsIs,
         },
         (Builtin::IntegerClamp, [n]) => match &*n.kind() {
-            Num(Integer(n)) => {
-                Ret::NirKind(Num(Natural((*n).try_into().unwrap_or(0))))
-            }
+            // Clamps to 0 for negatives; no upper bound to clamp to now.
+            Num(Integer(n)) => Ret::NirKind(Num(Natural(
+                n.to_biguint().unwrap_or_else(BigUint::zero),
+            ))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::DoubleShow, [n]) => match &*n.kind() {
@@ -465,8 +476,8 @@ fn apply_builtin<'cx>(
             }
         }
         (Builtin::ListLength, [_, l]) => match &*l.kind() {
-            EmptyListLit(_) => Ret::NirKind(Num(Natural(0))),
-            NEListLit(xs) => Ret::NirKind(Num(Natural(xs.len() as u64))),
+            EmptyListLit(_) => Ret::NirKind(Num(Natural(BigUint::zero()))),
+            NEListLit(xs) => Ret::NirKind(Num(Natural(BigUint::from(xs.len())))),
             _ => Ret::DoneAsIs,
         },
         (Builtin::ListHead, [_, l]) => match &*l.kind() {
@@ -512,7 +523,7 @@ fn apply_builtin<'cx>(
                                     let mut kvs = HashMap::new();
                                     kvs.insert(
                                         "index".into(),
-                                        Nir::from_kind(Num(Natural(i as u64))),
+                                        Nir::from_kind(Num(Natural(BigUint::from(i)))),
                                     );
                                     kvs.insert("value".into(), e.clone());
                                     Nir::from_kind(RecordLit(kvs))
@@ -559,14 +570,14 @@ fn apply_builtin<'cx>(
                     λ(x : Natural) ->
                     1 + var(x)
                 )))
-                .app(Num(Natural(0)).into_nir()),
+                .app(Num(Natural(BigUint::zero())).into_nir()),
         ),
 
         (Builtin::NaturalFold, [n, t, succ, zero]) => match &*n.kind() {
-            Num(Natural(0)) => Ret::Nir(zero.clone()),
+            Num(Natural(n)) if n.is_zero() => Ret::Nir(zero.clone()),
             Num(Natural(n)) => {
                 let fold = Nir::from_builtin(cx, Builtin::NaturalFold)
-                    .app(Num(Natural(n - 1)).into_nir())
+                    .app(Num(Natural(n - 1u32)).into_nir())
                     .app(t.clone())
                     .app(succ.clone())
                     .app(zero.clone());

@@ -299,7 +299,7 @@ impl Display for NumKind {
             Bool(true) => f.write_str("True")?,
             Bool(false) => f.write_str("False")?,
             Natural(a) => a.fmt(f)?,
-            Integer(a) if *a >= 0 => {
+            Integer(a) if a.sign() != num_bigint::Sign::Minus => {
                 f.write_str("+")?;
                 a.fmt(f)?;
             }

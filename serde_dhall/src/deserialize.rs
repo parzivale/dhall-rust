@@ -8,6 +8,7 @@ use serde::de::value::{
 use serde::de::{Deserialize as _, VariantAccess as _};
 
 use dhall::syntax::NumKind;
+use num_traits::ToPrimitive;
 
 use crate::function::FUNCTION_TOKEN;
 use crate::value::SimpleValue;
@@ -68,11 +69,11 @@ impl<T> Sealed for T where T: serde::de::DeserializeOwned {}
 /// let mut data = BTreeMap::new();
 /// data.insert(
 ///     "x".to_string(),
-///     serde_dhall::SimpleValue::Num(serde_dhall::NumKind::Natural(1))
+///     serde_dhall::SimpleValue::Num(serde_dhall::NumKind::Natural(1u32.into()))
 /// );
 /// data.insert(
 ///     "y".to_string(),
-///     serde_dhall::SimpleValue::Num(serde_dhall::NumKind::Natural(2))
+///     serde_dhall::SimpleValue::Num(serde_dhall::NumKind::Natural(2u32.into()))
 /// );
 /// let data = serde_dhall::SimpleValue::Record(data);
 ///
@@ -142,8 +143,25 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
         let val = |x| Deserializer(Cow::Borrowed(x));
         match self.0.as_ref() {
             Num(Bool(x)) => visitor.visit_bool(*x),
-            Num(Natural(x)) => visitor.visit_u64(*x),
-            Num(Integer(x)) => visitor.visit_i64(*x),
+            // Dhall's Natural and Integer are unbounded, but serde's data model
+            // stops at 128 bits. Refuse rather than truncate: a silently wrong
+            // number is worse than a failed parse.
+            Num(Natural(x)) => match (x.to_u64(), x.to_u128()) {
+                (Some(x), _) => visitor.visit_u64(x),
+                (None, Some(x)) => visitor.visit_u128(x),
+                (None, None) => Err(Error(ErrorKind::Deserialize(format!(
+                    "Natural {} is too large for Rust's integer types",
+                    x
+                )))),
+            },
+            Num(Integer(x)) => match (x.to_i64(), x.to_i128()) {
+                (Some(x), _) => visitor.visit_i64(x),
+                (None, Some(x)) => visitor.visit_i128(x),
+                (None, None) => Err(Error(ErrorKind::Deserialize(format!(
+                    "Integer {} is out of range for Rust's integer types",
+                    x
+                )))),
+            },
             Num(Double(x)) => visitor.visit_f64((*x).into()),
             Text(x) => visitor.visit_str(x),
             List(xs) => {
@@ -232,11 +250,19 @@ impl<'de> serde::de::Visitor<'de> for SimpleValueVisitor {
     }
 
     fn visit_i64<E>(self, value: i64) -> Result<SimpleValue, E> {
-        Ok(SimpleValue::Num(NumKind::Integer(value)))
+        Ok(SimpleValue::Num(NumKind::Integer(value.into())))
     }
 
     fn visit_u64<E>(self, value: u64) -> Result<SimpleValue, E> {
-        Ok(SimpleValue::Num(NumKind::Natural(value)))
+        Ok(SimpleValue::Num(NumKind::Natural(value.into())))
+    }
+
+    fn visit_i128<E>(self, value: i128) -> Result<SimpleValue, E> {
+        Ok(SimpleValue::Num(NumKind::Integer(value.into())))
+    }
+
+    fn visit_u128<E>(self, value: u128) -> Result<SimpleValue, E> {
+        Ok(SimpleValue::Num(NumKind::Natural(value.into())))
     }
 
     fn visit_f64<E>(self, value: f64) -> Result<SimpleValue, E> {

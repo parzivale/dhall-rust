@@ -1,5 +1,9 @@
 use std::vec;
 
+use minicbor::data::IanaTag;
+use num_bigint::Sign;
+use num_traits::ToPrimitive;
+
 use crate::builtins::Builtin;
 use crate::error::EncodeError;
 use crate::operations::{BinOp, OpKind};
@@ -7,6 +11,47 @@ use crate::syntax::{
     self, Expr, ExprKind, FilePrefix, Hash, ImportMode, ImportTarget,
     InterpolatedTextContents, Label, NaiveDouble, Scheme, V,
 };
+
+/// Write a `Natural`, using the machine encoding when it fits.
+///
+/// CBOR represents integers too large for that as a tagged big-endian byte
+/// string (RFC 8949 section 3.4.3). `minicbor` names the tags but carries no
+/// bignum type, so the conversion is done here.
+fn encode_natural<W: minicbor::encode::Write>(
+    enc: &mut minicbor::Encoder<W>,
+    n: &syntax::Natural,
+) -> Result<(), minicbor::encode::Error<W::Error>> {
+    match n.to_u64() {
+        Some(small) => {
+            enc.u64(small)?;
+        }
+        None => {
+            enc.tag(IanaTag::PosBignum.tag())?;
+            enc.bytes(&n.to_bytes_be())?;
+        }
+    }
+    Ok(())
+}
+
+/// Write an `Integer`, using the machine encoding when it fits.
+fn encode_integer<W: minicbor::encode::Write>(
+    enc: &mut minicbor::Encoder<W>,
+    n: &syntax::Integer,
+) -> Result<(), minicbor::encode::Error<W::Error>> {
+    if let Some(small) = n.to_i64() {
+        enc.i64(small)?;
+        return Ok(());
+    }
+    let (tag, magnitude) = if n.sign() == Sign::Minus {
+        // A negative bignum stores `m` such that the value is `-1 - m`.
+        (IanaTag::NegBignum, n.magnitude() - 1u32)
+    } else {
+        (IanaTag::PosBignum, n.magnitude().clone())
+    };
+    enc.tag(tag.tag())?;
+    enc.bytes(&magnitude.to_bytes_be())?;
+    Ok(())
+}
 
 pub fn encode(expr: &Expr) -> Result<Vec<u8>, EncodeError> {
     minicbor::to_vec(expr).map_err(EncodeError::CBORError)
@@ -123,8 +168,16 @@ impl minicbor::Encode<()> for Expr {
             Const(c) => c.to_string().encode(enc, ctx)?,
             Builtin(b) => b.to_string().encode(enc, ctx)?,
             Num(Bool(b)) => b.encode(enc, ctx)?,
-            Num(Natural(n)) => (15u64, n).encode(enc, ctx)?,
-            Num(Integer(n)) => (16u64, n).encode(enc, ctx)?,
+            Num(Natural(n)) => {
+                enc.array(2)?;
+                enc.u64(15)?;
+                encode_natural(enc, n)?;
+            }
+            Num(Integer(n)) => {
+                enc.array(2)?;
+                enc.u64(16)?;
+                encode_integer(enc, n)?;
+            }
             Num(Double(n)) => n.encode(enc, ctx)?,
             Op(BoolIf(x, y, z)) => (14u64, x, y, z).encode(enc, ctx)?,
             Var(V(l, n)) if l.as_ref() == "_" => {

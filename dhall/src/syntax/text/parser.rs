@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::iter::once;
 use std::rc::Rc;
 
+use num_traits::ToPrimitive;
 use pest_consume::{match_nodes, Parser};
 
 use crate::operations::OpKind::*;
@@ -380,8 +381,9 @@ impl DhallParser {
         let s = input.as_str().trim();
         if s.starts_with("0x") {
             let without_prefix = s.trim_start_matches("0x");
-            u64::from_str_radix(without_prefix, 16)
-                .map_err(|e| input.error(format!("{}", e)))
+            Natural::parse_bytes(without_prefix.as_bytes(), 16).ok_or_else(
+                || input.error(format!("invalid hex Natural: {}", s)),
+            )
         } else {
             s.parse().map_err(|e| input.error(format!("{}", e)))
         }
@@ -393,8 +395,9 @@ impl DhallParser {
         if rest.starts_with("0x") {
             let without_prefix =
                 sign.to_owned() + rest.trim_start_matches("0x");
-            i64::from_str_radix(&without_prefix, 16)
-                .map_err(|e| input.error(format!("{}", e)))
+            Integer::parse_bytes(without_prefix.as_bytes(), 16).ok_or_else(
+                || input.error(format!("invalid hex Integer: {}", s)),
+            )
         } else {
             s.parse().map_err(|e| input.error(format!("{}", e)))
         }
@@ -410,7 +413,13 @@ impl DhallParser {
 
     fn variable(input: ParseInput) -> ParseResult<V> {
         Ok(match_nodes!(input.into_children();
-            [label(l), natural_literal(idx)] => V(l, idx as usize),
+            // A de Bruijn index counts enclosing binders, so unlike a `Natural`
+            // literal it is bounded by the size of the expression. Anything
+            // that does not fit a usize cannot name a binder that exists.
+            [label(l), natural_literal(idx)] => V(
+                l,
+                idx.to_usize().unwrap_or(usize::MAX),
+            ),
             [label(l)] => V(l, 0),
         ))
     }
