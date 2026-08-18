@@ -3,4 +3,3 @@ Type error: error: annot mismatch: Bool != Natural
   |
 1 | let x : Natural = True in True
   |                   ^^^^ annot mismatch: Bool != Natural
-  |

@@ -3,4 +3,3 @@ Type error: error: ProjectionMissingEntry
   |
 1 | {=}.{ x }
   | ^^^^^^^^^ ProjectionMissingEntry
-  |

@@ -3,4 +3,3 @@ Type error: error: MergeHandlerMissingVariant
   |
 1 | merge { x = 1, y = 2 } < x >.x
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ MergeHandlerMissingVariant
-  |

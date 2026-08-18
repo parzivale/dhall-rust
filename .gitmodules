@@ -1,4 +1,0 @@
-[submodule "dhall-lang"]
-	path = dhall-lang
-	url = https://github.com/dhall-lang/dhall-lang
-    ignore = dirty

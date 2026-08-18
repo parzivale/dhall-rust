@@ -3,4 +3,3 @@ Type error: error: IfBranchMustBeTermTypeOrKind
   |
 1 | if True then Kind else Kind
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^ IfBranchMustBeTermTypeOrKind
-  |

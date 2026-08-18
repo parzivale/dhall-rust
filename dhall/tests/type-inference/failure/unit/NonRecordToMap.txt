@@ -3,4 +3,3 @@ Type error: error: The argument to `toMap` must be a record
   |
 1 | toMap "text"
   | ^^^^^^^^^^^^ The argument to `toMap` must be a record
-  |

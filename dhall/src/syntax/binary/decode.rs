@@ -38,7 +38,7 @@ impl<'b> minicbor::Decode<'b, ()> for Value {
         d: &mut minicbor::Decoder<'b>,
         ctx: &mut (),
     ) -> Result<Self, minicbor::decode::Error> {
-        use minicbor::data::{Tag, Type};
+        use minicbor::data::Type;
         let p = d.position();
         macro_rules! throw {
             ($($msg:tt)*) => {
@@ -83,12 +83,12 @@ impl<'b> minicbor::Decode<'b, ()> for Value {
                 Value::Bytes(bytes)
             }
             Type::Tag => {
-                match d.tag()? {
-                    // That's the cbor self-description tag.
-                    Tag::Unassigned(55799) => Value::decode(d, ctx)?,
-                    tag => {
-                        throw!("Unknown cbor tag: {tag:?}")
-                    }
+                let tag = d.tag()?;
+                // That's the cbor self-description tag.
+                if tag.as_u64() == 55799 {
+                    Value::decode(d, ctx)?
+                } else {
+                    throw!("Unknown cbor tag: {tag:?}")
                 }
             }
             t @ (Type::Undefined

@@ -3,4 +3,3 @@ Type error: error: unbound variable `x`
   |
 1 | x
   | ^ not found in this scope
-  |

@@ -3,4 +3,3 @@ Type error: error: InvalidTextInterpolation
   |
 1 | "${1}"
   | ^^^^^^ InvalidTextInterpolation
-  |

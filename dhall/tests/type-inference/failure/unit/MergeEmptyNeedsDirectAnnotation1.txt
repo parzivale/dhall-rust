@@ -3,4 +3,3 @@ Type error: error: MergeEmptyNeedsAnnotation
   |
 1 | \(x: <>) -> (merge {=} x) : Bool
   |              ^^^^^^^^^^^ MergeEmptyNeedsAnnotation
-  |

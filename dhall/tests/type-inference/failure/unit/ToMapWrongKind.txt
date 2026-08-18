@@ -3,4 +3,3 @@ Type error: error: `toMap` only accepts records of type `Type`
   |
 1 | toMap { x = Bool }
   | ^^^^^^^^^^^^^^^^^^ `toMap` only accepts records of type `Type`
-  |

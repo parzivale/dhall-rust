@@ -111,7 +111,7 @@ fn derive_for_enum(
 pub fn derive_static_type_inner(
     input: TokenStream,
 ) -> Result<proc_macro2::TokenStream, Error> {
-    let input: DeriveInput = syn::parse_macro_input::parse(input)?;
+    let input: DeriveInput = syn::parse(input)?;
 
     // List of types that must impl StaticType
     let mut constraints = vec![];
@@ -152,7 +152,7 @@ pub fn derive_static_type_inner(
             syn::GenericParam::Type(syn::TypeParam { ident, .. }) => {
                 quote!(#ident)
             }
-            syn::GenericParam::Lifetime(syn::LifetimeDef {
+            syn::GenericParam::Lifetime(syn::LifetimeParam {
                 lifetime, ..
             }) => quote!(&#lifetime ()),
             _ => unimplemented!(),

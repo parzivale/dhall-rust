@@ -3,4 +3,3 @@ Type error: error: InvalidFieldType
   |
 1 | { x : True }
   |       ^^^^ InvalidFieldType
-  |

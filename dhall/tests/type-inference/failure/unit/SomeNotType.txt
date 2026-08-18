@@ -3,4 +3,3 @@ Type error: error: InvalidOptionalType
   |
 1 | Some Bool
   | ^^^^^^^^^ InvalidOptionalType
-  |

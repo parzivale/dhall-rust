@@ -3,4 +3,3 @@ Type error: error: InvalidPredicate
   |
 1 | if 1 then 1 else 1
   | ^^^^^^^^^^^^^^^^^^ InvalidPredicate
-  |

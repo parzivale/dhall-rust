@@ -3,4 +3,3 @@ Type error: error: Every field of the record must have the same type
   |
 1 | toMap { foo= 1, bar= "Bar" }
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Every field of the record must have the same type
-  |

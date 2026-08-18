@@ -2,8 +2,9 @@ Type error: error: wrong type of function argument
  --> <current file>:1:6
   |
 1 | [] : List Type
-  |      ^^^^ this expects an argument of type: Type
-  |           ^^^^ but this has type: Kind
+  |      ^^^^ ^^^^ but this has type: Kind
+  |      |
+  |      this expects an argument of type: Type
   |
   = note: expected type `Type`
              found type `Kind`

@@ -3,4 +3,3 @@ Type error: error: EquivalenceTypeMismatch
   |
 1 | 1 === False
   | ^^^^^^^^^^^ EquivalenceTypeMismatch
-  |

@@ -3,4 +3,3 @@ Type error: error: MissingRecordField
   |
 1 | { y = {=} }.x
   | ^^^^^^^^^^^^^ MissingRecordField
-  |

@@ -1,9 +1,41 @@
 use annotate_snippets::{
-    display_list::DisplayList,
-    snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation},
+    renderer::DecorStyle, AnnotationKind, Element, Level, Renderer, Snippet,
 };
 
 use crate::syntax::{ParsedSpan, Span};
+
+/// How severe an annotation is.
+///
+/// This mirrors annotate-snippets' levels rather than re-exporting them, so
+/// that this crate's public API does not shift every time that dependency
+/// reshuffles its types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnnotationType {
+    Error,
+    Help,
+    Note,
+}
+
+impl AnnotationType {
+    fn to_level(self) -> Level<'static> {
+        match self {
+            AnnotationType::Error => Level::ERROR,
+            AnnotationType::Help => Level::HELP,
+            AnnotationType::Note => Level::NOTE,
+        }
+    }
+
+    /// annotate-snippets no longer gives each in-source annotation its own
+    /// level; they are either the primary span or supporting context.
+    fn to_annotation_kind(self) -> AnnotationKind {
+        match self {
+            AnnotationType::Error => AnnotationKind::Primary,
+            AnnotationType::Help | AnnotationType::Note => {
+                AnnotationKind::Context
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct ErrorBuilder {
@@ -26,26 +58,6 @@ struct SpannedAnnotation {
 struct FreeAnnotation {
     message: String,
     annotation_type: AnnotationType,
-}
-
-impl SpannedAnnotation {
-    fn to_annotation(&self) -> SourceAnnotation<'_> {
-        SourceAnnotation {
-            label: &self.message,
-            annotation_type: self.annotation_type,
-            range: self.span.as_char_range(),
-        }
-    }
-}
-
-impl FreeAnnotation {
-    fn to_annotation(&self) -> Annotation<'_> {
-        Annotation {
-            label: Some(&self.message),
-            id: None,
-            annotation_type: self.annotation_type,
-        }
-    }
 }
 
 /// A builder that uses the annotate_snippets library to display nice error messages about source
@@ -115,7 +127,6 @@ impl ErrorBuilder {
     }
 
     // TODO: handle multiple files
-    #[allow(clippy::drop_ref)]
     pub fn format(&mut self) -> String {
         if self.consumed {
             panic!("tried to format the same ErrorBuilder twice")
@@ -124,36 +135,48 @@ impl ErrorBuilder {
         self.consumed = true;
 
         let input;
-        let slices = if this.annotations.is_empty() {
-            Vec::new()
-        } else {
-            input = this.annotations[0].span.to_input();
-            let annotations = this
-                .annotations
-                .iter()
-                .map(|annot| annot.to_annotation())
-                .collect();
-            vec![Slice {
-                source: &input,
-                line_start: 1, // TODO
-                origin: Some("<current file>"),
-                fold: true,
-                annotations,
-            }]
-        };
-        let footer = this
-            .footer
-            .iter()
-            .map(|annot| annot.to_annotation())
-            .collect();
+        let mut elements: Vec<Element<'_>> = Vec::new();
 
-        let snippet = Snippet {
-            title: Some(this.title.to_annotation()),
-            slices,
-            footer,
-            opt: Default::default(),
-        };
-        DisplayList::from(snippet).to_string()
+        if !this.annotations.is_empty() {
+            input = this.annotations[0].span.to_input();
+            let mut snippet = Snippet::source(input.as_str())
+                .line_start(1) // TODO
+                .path("<current file>")
+                .fold(true);
+            for annot in &this.annotations {
+                snippet = snippet.annotation(
+                    annot
+                        .annotation_type
+                        .to_annotation_kind()
+                        .span(annot.span.as_byte_range())
+                        .label(annot.message.as_str()),
+                );
+            }
+            elements.push(snippet.into());
+        }
+
+        for annot in &this.footer {
+            elements.push(
+                annot
+                    .annotation_type
+                    .to_level()
+                    .message(annot.message.as_str())
+                    .into(),
+            );
+        }
+
+        let group = this
+            .title
+            .annotation_type
+            .to_level()
+            .primary_title(this.title.message.as_str())
+            .elements(elements);
+
+        // Ascii decor and no colour, matching what this crate rendered before
+        // annotate-snippets switched its default to styled Unicode.
+        Renderer::plain()
+            .decor_style(DecorStyle::Ascii)
+            .render(&[group])
     }
 }
 

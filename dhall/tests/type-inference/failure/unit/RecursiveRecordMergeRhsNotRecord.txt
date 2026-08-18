@@ -3,4 +3,3 @@ Type error: error: RecordTypeMergeRequiresRecordType
   |
 1 | {=} ∧ True
   | ^^^^^^^^^^ RecordTypeMergeRequiresRecordType
-  |

@@ -3,4 +3,3 @@ Type error: error: EquivalenceArgumentsMustBeTerms
   |
 1 | Bool === Bool
   | ^^^^^^^^^^^^^ EquivalenceArgumentsMustBeTerms
-  |

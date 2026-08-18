@@ -3,4 +3,3 @@ Type error: error: Sort does not have a type
   |
 1 | \(x: let x = 0 in Sort) -> 1
   |                   ^^^^ Sort does not have a type
-  |

@@ -3,4 +3,3 @@ Type error: error: NotARecord
   |
 1 | True.x
   | ^^^^^^ NotARecord
-  |

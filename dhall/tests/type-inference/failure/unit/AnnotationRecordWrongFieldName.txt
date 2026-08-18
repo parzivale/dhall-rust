@@ -3,4 +3,3 @@ Type error: error: annot mismatch: { x : Natural } != { y : Natural }
   |
 1 | { x = 1 } : { y : Natural }
   | ^^^^^^^^^ annot mismatch: { x : Natural } != { y : Natural }
-  |

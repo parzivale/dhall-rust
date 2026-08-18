@@ -14,9 +14,9 @@ proc-macro = true
 doctest = false
 
 [dependencies]
-quote = "1.0"
-proc-macro2 = "1.0"
-syn = "1.0"
+quote = "1.0.47"
+proc-macro2 = "1.0.107"
+syn = "3.0.3"
 
 [dev-dependencies]
-version-sync = "0.9"
+version-sync = "0.9.5"

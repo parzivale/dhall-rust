@@ -3,4 +3,3 @@ Type error: error: unbound variable `constructors`
   |
 1 | constructors < Left : Natural | Right : Bool >
   | ^^^^^^^^^^^^ not found in this scope
-  |

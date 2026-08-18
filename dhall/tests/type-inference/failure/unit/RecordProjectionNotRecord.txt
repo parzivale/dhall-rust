@@ -3,4 +3,3 @@ Type error: error: ProjectionMustBeRecord
   |
 1 | True.{ x }
   | ^^^^^^^^^^ ProjectionMustBeRecord
-  |

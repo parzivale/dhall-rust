@@ -3,4 +3,3 @@ Type error: error: AssertMismatch
   |
 1 | assert : -0.0 ≡ +0.0
   | ^^^^^^^^^^^^^^^^^^^^ AssertMismatch
-  |

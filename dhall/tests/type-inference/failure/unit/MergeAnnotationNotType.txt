@@ -3,4 +3,3 @@ Type error: error: Merge2ArgMustBeUnionOrOptional
   |
 1 | merge {=} <> : Type
   | ^^^^^^^^^^^^^^^^^^^ Merge2ArgMustBeUnionOrOptional
-  |

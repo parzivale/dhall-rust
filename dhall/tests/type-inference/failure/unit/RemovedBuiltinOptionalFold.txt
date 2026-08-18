@@ -3,4 +3,3 @@ Type error: error: unbound variable ``Optional/fold``
   |
 1 | Optional/fold
   | ^^^^^^^^^^^^^ not found in this scope
-  |

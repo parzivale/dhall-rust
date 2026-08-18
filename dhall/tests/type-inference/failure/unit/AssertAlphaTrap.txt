@@ -3,4 +3,3 @@ Type error: error: unbound variable `_`
   |
 1 | assert : (\(_: Bool) -> _) === (\(x: Bool) -> _)
   |                                               ^ not found in this scope
-  |

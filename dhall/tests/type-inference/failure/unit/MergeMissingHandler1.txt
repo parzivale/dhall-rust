@@ -3,4 +3,3 @@ Type error: error: MergeVariantMissingHandler
   |
 1 | merge {=} <x>.x
   | ^^^^^^^^^^^^^^^ MergeVariantMissingHandler
-  |

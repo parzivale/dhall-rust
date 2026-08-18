@@ -1,0 +1,45 @@
+{
+  "nodes": {
+    "dhall-lang": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1623457968,
+        "narHash": "sha256-sMe6O7F5Fb0YNGeAMG30DC8DcIb6D0EnS296Opn4Wo4=",
+        "owner": "dhall-lang",
+        "repo": "dhall-lang",
+        "rev": "204a9d9dd167d2c9038539148a09825ded62f1b8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "dhall-lang",
+        "repo": "dhall-lang",
+        "rev": "204a9d9dd167d2c9038539148a09825ded62f1b8",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1786943417,
+        "narHash": "sha256-b4qgjdFtlz5TAZ1Hi7DFJeqX3sjaDUnrwr9OO+O1rM0=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "0dd31db7e6dbf9ce05697c4545f6fe01accec994",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-26.05",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "dhall-lang": "dhall-lang",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

@@ -3,4 +3,3 @@ Type error: error: AssertMustTakeEquivalence
   |
 1 | assert : Bool
   | ^^^^^^^^^^^^^ AssertMustTakeEquivalence
-  |

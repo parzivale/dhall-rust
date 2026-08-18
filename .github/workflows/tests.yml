@@ -7,99 +7,30 @@ on:
     branches: [ master ]
 
 jobs:
-  test_release:
-    name: Run tests (release)
+  # Builds the workspace and runs the whole suite, in both profiles, inside the
+  # nix sandbox with no network -- remote imports are served locally by
+  # nix/spoof-imports.py.
+  checks:
+    name: Flake checks
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        rust:
-          - stable
     steps:
       - name: Checkout branch
-        uses: actions/checkout@master
-        with:
-          submodules: true
-      - name: Setup Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          override: true
-      - name: Run tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --release
+        uses: actions/checkout@v4
+      - name: Install nix
+        uses: cachix/install-nix-action@v27
+      - name: Run flake checks
+        run: nix flake check --print-build-logs
 
-  tests_debug:
-    name: Run tests
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        rust:
-          - beta
-          - nightly
-          - 1.76.0  # Minimum supported version
-    steps:
-      - name: Checkout branch
-        uses: actions/checkout@master
-        with:
-          submodules: true
-      - name: Setup Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          override: true
-        env:
-          RUSTFLAGS: '-Awarnings' # The `stable` job already emits warnings; no need to duplicate
-      - name: Run tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-
+  # Not a flake check: `wasm-pack test` downloads a matching wasm-bindgen at
+  # run time, which the sandbox cannot do. Making it hermetic would mean
+  # --mode no-install against nixpkgs' wasm-bindgen-cli.
   test_wasm:
     name: Run wasm tests
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        rust:
-          - stable
     steps:
       - name: Checkout branch
-        uses: actions/checkout@master
-        with:
-          submodules: true
-      - name: Setup Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          override: true
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        uses: actions/checkout@v4
+      - name: Install nix
+        uses: cachix/install-nix-action@v27
       - name: Run tests
-        run: wasm-pack test --node serde_dhall
-
-  test_windows:
-    name: Run tests on windows
-    runs-on: windows-latest
-    strategy:
-      matrix:
-        rust:
-          - stable
-    steps:
-      - name: Checkout branch
-        uses: actions/checkout@master
-        with:
-          submodules: true
-      - name: Setup Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          override: true
-      - name: Run tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
+        run: nix develop --command wasm-pack test --node serde_dhall

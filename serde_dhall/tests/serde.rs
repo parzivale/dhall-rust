@@ -285,21 +285,30 @@ mod serde {
         assert!(from_str("List/length [True, 42]").parse::<bool>().is_err());
     }
 
+    /// Locate a fixture in the dhall-lang suite. Uses the pin when one is set
+    /// (the nix devshell does), else a checkout beside the workspace.
+    fn dhall_lang_file(rel_path: &str) -> String {
+        match std::env::var("DHALL_LANG_DIR") {
+            Ok(dir) => format!("{}/{}", dir, rel_path),
+            Err(_) => format!("../dhall-lang/{}", rel_path),
+        }
+    }
+
     #[test]
     fn test_file() {
         assert_eq!(
-            serde_dhall::from_file(
-                "../dhall-lang/tests/parser/success/unit/BoolLitTrueA.dhall"
-            )
+            serde_dhall::from_file(dhall_lang_file(
+                "tests/parser/success/unit/BoolLitTrueA.dhall"
+            ))
             .static_type_annotation()
             .parse::<bool>()
             .map_err(|e| e.to_string()),
             Ok(true)
         );
         assert_eq!(
-            serde_dhall::from_binary_file(
-                "../dhall-lang/tests/parser/success/unit/BoolLitTrueB.dhallb"
-            )
+            serde_dhall::from_binary_file(dhall_lang_file(
+                "tests/parser/success/unit/BoolLitTrueB.dhallb"
+            ))
             .static_type_annotation()
             .parse::<bool>()
             .map_err(|e| e.to_string()),
@@ -310,7 +319,7 @@ mod serde {
     #[test]
     fn test_import() {
         assert_de(
-            "../dhall-lang/tests/parser/success/unit/BoolLitTrueA.dhall",
+            &dhall_lang_file("tests/parser/success/unit/BoolLitTrueA.dhall"),
             true,
         );
         assert_eq!(

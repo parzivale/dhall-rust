@@ -3,4 +3,3 @@ Type error: error: BinOpTypeMismatch
   |
 1 | [ True ] # 1
   | ^^^^^^^^^^^^ BinOpTypeMismatch
-  |

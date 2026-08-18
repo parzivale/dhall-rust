@@ -3,4 +3,3 @@ Type error: error: WithMustBeRecord
   |
 1 | 5 with a = 10
   | ^^^^^^^^^^^^^ WithMustBeRecord
-  |

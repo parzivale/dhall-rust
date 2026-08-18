@@ -3,4 +3,3 @@ Type error: error: error
   |
 1 | https://test.dhall-lang.org/cors/TwoHopsFail.dhall
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ SanityCheck
-  |

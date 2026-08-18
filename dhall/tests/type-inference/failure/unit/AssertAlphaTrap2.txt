@@ -3,4 +3,3 @@ Type error: error: AssertMismatch
   |
 1 | \(_: Bool) -> assert : (\(_: Bool) -> _) === (\(x: Bool) -> _)
   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ AssertMismatch
-  |

@@ -3,4 +3,3 @@ Type error: error: MergeEmptyNeedsAnnotation
   |
 1 | \(x: <>) -> let y: Bool = merge {=} x in 1
   |                           ^^^^^^^^^^^ MergeEmptyNeedsAnnotation
-  |

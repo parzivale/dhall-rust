@@ -1,6 +1,5 @@
 use anyhow::Result;
-use rand::distributions::Alphanumeric;
-use rand::Rng;
+use rand::distr::{Alphanumeric, SampleString};
 use std::env;
 use std::ffi::OsString;
 use std::fmt::{Debug, Display};
@@ -689,48 +688,113 @@ fn run_test(test: &SpecTest) -> Result<()> {
     })
 }
 
+/// Create a symlink to a directory, on whichever platform we're on.
+fn symlink_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    return std::os::unix::fs::symlink(src, dst);
+    #[cfg(windows)]
+    return std::os::windows::fs::symlink_dir(src, dst);
+}
+
+/// Clear the read-only bit on `dir` and everything under it.
+fn make_writable(dir: &Path) {
+    for entry in WalkDir::new(dir) {
+        let entry = entry.unwrap();
+        let mut perms = entry.metadata().unwrap().permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        std::fs::set_permissions(entry.path(), perms).unwrap();
+    }
+}
+
+/// Build the directory the tests run from.
+///
+/// The `as Location` fixtures assert on the literal string
+/// `"./dhall-lang/tests/..."`, so a directory *named* `dhall-lang` has to sit
+/// directly under the current directory while the tests run. That name is
+/// forced by the fixture data; the location is not. Rather than require the
+/// suite be materialised inside the repository, stage a root in a temp
+/// directory containing the two entries the paths resolve through:
+///
+///   <staging>/dhall       -> the crate directory (`TestFile::path` prefixes
+///                            every path with `dhall`, and the local tests and
+///                            expected UI output live under `dhall/tests`)
+///   <staging>/dhall-lang  -> the dhall-lang standard suite
+///
+/// `DHALL_LANG_DIR` picks the suite up from wherever it's pinned (the nix flake
+/// points it at the store); it falls back to a `dhall-lang` checkout beside the
+/// crate so a plain `cargo test` in a git clone keeps working.
+///
+/// Note the entries are symlinks, so `--bless` still writes through to the real
+/// files. Blessing a dhall-lang fixture fails when the pin is a read-only store
+/// path, which is the right outcome — those come from upstream.
+fn stage_test_root(crate_dir: &Path, staging: &Path) -> PathBuf {
+    let dhall_lang_dir = match env::var_os("DHALL_LANG_DIR") {
+        Some(dir) => PathBuf::from(dir),
+        None => crate_dir.parent().unwrap().join("dhall-lang"),
+    };
+    assert!(
+        dhall_lang_dir.is_dir(),
+        "the dhall-lang test suite is missing from {}; point DHALL_LANG_DIR at \
+         a checkout, or enter the nix devshell which sets it for you",
+        dhall_lang_dir.display(),
+    );
+
+    // `<staging>/dhall` must be a real directory rather than a symlink to the
+    // crate. The kernel resolves `..` physically, so `../dhall-lang` from a
+    // symlinked `dhall` would escape the staging root and resolve beside the
+    // crate instead -- silently picking up a stray checkout over the pin.
+    create_dir_all(staging.join("dhall")).unwrap();
+    symlink_dir(&crate_dir.join("tests"), &staging.join("dhall").join("tests"))
+        .unwrap();
+    symlink_dir(&dhall_lang_dir, &staging.join("dhall-lang")).unwrap();
+
+    staging.join("dhall-lang")
+}
+
 fn main() {
+    let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+    let random_id = Alphanumeric.sample_string(&mut rand::rng(), 36);
+    let staging_dir = env::temp_dir().join(format!("dhall-tests-{}", random_id));
+    let dhall_lang_dir = stage_test_root(&crate_dir, &staging_dir);
+
+    // Test discovery walks `TEST_PATHS`, which are relative to the crate
+    // directory; running them resolves paths from the staging root one level up
+    // (see `TestFile::path`). Both have to happen from the staged tree so that
+    // `as Location` output canonicalises to `./dhall-lang/...`.
+    env::set_current_dir(staging_dir.join("dhall")).unwrap();
+
     let tests = FEATURES
         .iter()
         .copied()
         .flat_map(discover_tests_for_feature)
         .collect();
 
-    // Setup current directory to the root of the repository. Important for `as Location` tests.
-    let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .to_path_buf();
-    env::set_current_dir(root_dir.as_path()).unwrap();
+    env::set_current_dir(&staging_dir).unwrap();
 
     // Set environment variable for import tests.
     env::set_var("DHALL_TEST_VAR", "6 * 7");
 
     // Configure cache for import tests
-    let dhall_cache_dir = root_dir
-        .join("dhall-lang")
+    let dhall_cache_dir = dhall_lang_dir
         .join("tests")
         .join("import")
         .join("cache")
         .join("dhall");
-    let random_id = rand::thread_rng()
-        .sample_iter(Alphanumeric)
-        .map(|b| b as char)
-        .take(36)
-        .collect::<String>();
-    let cache_dir = format!("dhall-tests-{}", random_id);
-    let cache_dir = env::temp_dir().join(cache_dir);
+    let cache_dir = staging_dir.join("cache");
     std::fs::create_dir_all(&cache_dir).unwrap();
     fs_extra::dir::copy(&dhall_cache_dir, &cache_dir, &Default::default())
         .unwrap();
+    // `fs_extra` preserves permissions, so copying from a read-only pin (a nix
+    // store path) would leave the cache unwritable for the import tests.
+    make_writable(&cache_dir);
     env::set_var("XDG_CACHE_HOME", &cache_dir);
 
-    let dhall_home_dir = root_dir
-        .join("dhall")
-        // TODO: point to the dhall-lang submodule and remove
-        // local version of ImportRelativeToHome test once
-        // dhall-lang/dhall-lang#1250 is accepted and available
-        // in the dhall-lang submodule.
+    let dhall_home_dir = crate_dir
+        // TODO: point to the dhall-lang pin and remove the local version of the
+        // ImportRelativeToHome test once dhall-lang/dhall-lang#1250 is accepted
+        // and available in the pinned revision.
         .join("tests")
         .join("import")
         .join("home");
@@ -751,7 +815,8 @@ fn main() {
     let args = Arguments::from_iter(env::args().filter(|arg| arg != "--bless"));
     let res = libtest_mimic::run(&args, tests);
 
-    std::fs::remove_dir_all(&cache_dir).unwrap();
+    // Removes the staged symlinks themselves, not the trees they point at.
+    std::fs::remove_dir_all(&staging_dir).unwrap();
 
     res.exit();
 }

@@ -3,4 +3,3 @@ Type error: error: MustCombineRecord
   |
 1 | True ⫽ {=}
   | ^^^^^^^^^^ MustCombineRecord
-  |

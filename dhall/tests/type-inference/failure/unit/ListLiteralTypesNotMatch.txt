@@ -3,4 +3,3 @@ Type error: error: InvalidListElement
   |
 1 | [ True, 1 ]
   | ^^^^^^^^^^^ InvalidListElement
-  |

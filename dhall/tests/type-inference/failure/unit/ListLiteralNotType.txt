@@ -3,4 +3,3 @@ Type error: error: InvalidListType
   |
 1 | [ Bool ]
   | ^^^^^^^^ InvalidListType
-  |

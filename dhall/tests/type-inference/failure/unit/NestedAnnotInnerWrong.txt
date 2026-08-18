@@ -3,4 +3,3 @@ Type error: error: annot mismatch: Natural != Bool
   |
 1 | (0 : Bool) : Natural
   |  ^ annot mismatch: Natural != Bool
-  |

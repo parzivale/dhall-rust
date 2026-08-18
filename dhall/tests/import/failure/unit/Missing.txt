@@ -3,4 +3,3 @@ Type error: error: error
   |
 1 | missing
   | ^^^^^^^ Missing
-  |

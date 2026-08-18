@@ -7,5 +7,3 @@ Type error: error: error
   |
 1 | 404: Not Found
   |      ^^^ not found in this scope
-  |
-  |

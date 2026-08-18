@@ -3,4 +3,3 @@ Type error: error: ProjectionWrongType
   |
 1 | { y = {=} }.( {y : Natural} )
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ProjectionWrongType
-  |

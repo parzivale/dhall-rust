@@ -3,4 +3,3 @@ Type error: error: Merge2ArgMustBeUnionOrOptional
   |
 1 | \(x: { True: Natural, False: Natural }) -> merge x True
   |                                            ^^^^^^^^^^^^ Merge2ArgMustBeUnionOrOptional
-  |

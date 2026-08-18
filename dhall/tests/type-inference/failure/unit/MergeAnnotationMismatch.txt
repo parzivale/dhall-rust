@@ -3,4 +3,3 @@ Type error: error: MergeAnnotMismatch
   |
 1 | merge { x = 0 } < x >.x : Bool
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ MergeAnnotMismatch
-  |

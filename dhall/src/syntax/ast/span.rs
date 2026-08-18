@@ -32,13 +32,9 @@ impl ParsedSpan {
     pub fn to_input(&self) -> String {
         self.input.to_string()
     }
-    /// Convert to a char range for consumption by annotate_snippets.
-    /// This compensates for  https://github.com/rust-lang/annotate-snippets-rs/issues/24
-    pub fn as_char_range(&self) -> (usize, usize) {
-        (
-            char_idx_from_byte_idx(&self.input, self.start),
-            char_idx_from_byte_idx(&self.input, self.end),
-        )
+    /// Convert to a byte range for consumption by annotate_snippets.
+    pub fn as_byte_range(&self) -> std::ops::Range<usize> {
+        self.start..self.end
     }
 }
 
@@ -77,18 +73,4 @@ impl Span {
             ),
         }
     }
-}
-
-/// Convert a byte idx into a string into a char idx for consumption by annotate_snippets.
-/// The byte idx must be at a char boundary.
-fn char_idx_from_byte_idx(input: &str, idx: usize) -> usize {
-    use std::iter::once;
-    input
-        .char_indices()
-        .map(|(byte_i, _)| byte_i) // We don't care about the char
-        .chain(once(input.len())) // In case the idx points to the end of the string
-        .enumerate()
-        .find(|(_, byte_i)| *byte_i == idx)
-        .map(|(char_i, _)| char_i)
-        .unwrap()
 }

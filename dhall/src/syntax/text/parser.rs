@@ -1042,7 +1042,12 @@ pub fn parse_expr(input_str: &str) -> ParseResult<Expr> {
 fn test_grammar_files_in_sync() {
     use std::process::Command;
 
-    let spec_abnf_path = "../dhall-lang/standard/dhall.abnf";
+    // Picked up from the pin when there is one (the nix devshell sets it), else
+    // from a dhall-lang checkout beside the crate.
+    let spec_abnf_path = match std::env::var_os("DHALL_LANG_DIR") {
+        Some(dir) => std::path::PathBuf::from(dir).join("standard/dhall.abnf"),
+        None => std::path::PathBuf::from("../dhall-lang/standard/dhall.abnf"),
+    };
     let local_abnf_path = "src/syntax/text/dhall.abnf";
 
     let out = Command::new("git")

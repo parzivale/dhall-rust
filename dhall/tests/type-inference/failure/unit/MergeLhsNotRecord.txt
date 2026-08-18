@@ -3,4 +3,3 @@ Type error: error: Merge1ArgMustBeRecord
   |
 1 | merge True < x >.x
   | ^^^^^^^^^^^^^^^^^^ Merge1ArgMustBeRecord
-  |

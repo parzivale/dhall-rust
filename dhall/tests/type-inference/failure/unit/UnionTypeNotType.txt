@@ -3,4 +3,3 @@ Type error: error: InvalidVariantType
   |
 1 | < x : True >
   |       ^^^^ InvalidVariantType
-  |

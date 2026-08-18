@@ -1,7 +1,5 @@
 Type error: error: DuplicateFieldName
- --> <current file>:1:22
+ --> <current file>:8:22
   |
-...
 8 | { x = { y = 0 }, x = { y = 0 } }
   |                      ^^^^^^^^^ DuplicateFieldName
-  |
