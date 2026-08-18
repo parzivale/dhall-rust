@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap};
-use std::convert::TryInto;
 
 // Referred to by their crate paths: `Natural` and `Integer` are also NumKind
 // variants, which are in scope here and would shadow the type names.
