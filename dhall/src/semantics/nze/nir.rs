@@ -349,10 +349,19 @@ impl<'cx> Closure<'cx> {
     pub fn remove_binder(&self) -> Option<Nir<'cx>> {
         match self {
             Closure::Closure { .. } => {
-                let v = NzVar::fresh();
-                // TODO: handle case where variable is used in closure
+                // Apply two distinct fresh variables. If the binder is actually
+                // used, the bodies differ wherever it appears; if it is not,
+                // they are equal and the body is free of fresh variables and so
+                // safe to hand back. Comparison is the one thing fresh
+                // variables support, which saves an occurs-check over `Nir`.
+                //
                 // TODO: return information about where the variable is used
-                Some(self.apply_var(v))
+                let body = self.apply_var(NzVar::fresh());
+                if body == self.apply_var(NzVar::fresh()) {
+                    Some(body)
+                } else {
+                    None
+                }
             }
             Closure::ConstantClosure { body, .. } => Some(body.clone()),
         }

@@ -1,0 +1,5 @@
+Type error: error: MergeReturnTypeIsDependent
+ --> <current file>:1:1
+  |
+1 | merge { x = None } (<x: Type>.x Bool)
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ MergeReturnTypeIsDependent

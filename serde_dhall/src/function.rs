@@ -106,9 +106,9 @@ impl Function {
             NirKind::PiClosure { annot, closure, .. } => Ok(Function {
                 expr,
                 input_ty: SimpleType::from_nir_opt(annot),
-                // A dependent function type like `∀(a : Type) → List a` has no `SimpleType`
-                // equivalent; `from_nir_opt` rejects it because the bound variable is still
-                // free in the body we get back here.
+                // A dependent function type like `∀(a : Type) → List a` has no
+                // `SimpleType` equivalent, and `remove_binder` returns `None`
+                // for one, so this is `None` too.
                 output_ty: closure
                     .remove_binder()
                     .as_ref()

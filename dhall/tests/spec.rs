@@ -591,9 +591,7 @@ fn ignore_test(variant: SpecTestKind, path: &str) -> bool {
         || path == "import/success/customHeaders"
         || path == "import/success/headerForwarding"
         || path == "import/success/noHeaderForwarding"
-        || path == "import/failure/customHeadersUsingBoundVariable"
-        // TODO: enable free variable checking
-        || path == "type-inference/failure/unit/MergeHandlerFreeVar";
+        || path == "import/failure/customHeadersUsingBoundVariable";
 
     (cfg!(debug_assertions) && is_too_slow)
         || (cfg!(windows) && fails_on_windows)
