@@ -178,9 +178,30 @@ impl TestFile {
         Ok(())
     }
 
+    /// Whether an absent expected-output file may be created from our own
+    /// output.
+    ///
+    /// Only under `--bless`. Writing it unconditionally makes a test with a
+    /// missing output file pass against an expectation it just generated, which
+    /// is how `parser/success/largeExpressionB.txt` went uncommitted while its
+    /// test appeared to pass.
+    fn may_create_output(&self) -> Result<()> {
+        if Self::force_update() {
+            Ok(())
+        } else {
+            Err(TestError(format!(
+                "The expected output file {} does not exist. Re-run with \
+                 `--bless` to generate it from this implementation's output.",
+                self.path().display()
+            ))
+            .into())
+        }
+    }
+
     /// Check that the provided expression matches the file contents.
     pub fn compare(&self, expr: Expr) -> Result<()> {
         if !self.path().is_file() {
+            self.may_create_output()?;
             return self.write_expr(expr);
         }
 
@@ -197,6 +218,7 @@ impl TestFile {
     /// Check that the provided expression matches the file contents.
     pub fn compare_debug(&self, expr: Expr) -> Result<()> {
         if !self.path().is_file() {
+            self.may_create_output()?;
             return self.write_expr(expr);
         }
 
@@ -221,6 +243,7 @@ impl TestFile {
             }
         }
         if !self.path().is_file() {
+            self.may_create_output()?;
             return self.write_expr(expr);
         }
 
@@ -256,6 +279,7 @@ impl TestFile {
     /// if it is missing.
     pub fn compare_ui(&self, x: impl Display) -> Result<()> {
         if !self.path().is_file() {
+            self.may_create_output()?;
             return self.write_ui(x);
         }
 
