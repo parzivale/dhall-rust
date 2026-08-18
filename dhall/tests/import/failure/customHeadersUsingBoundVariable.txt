@@ -1,0 +1,5 @@
+Type error: error: unbound variable `x`
+  --> <current file>:14:43
+   |
+14 |      using [ { mapKey = "Foo", mapValue = x } ]
+   |                                           ^ not found in this scope

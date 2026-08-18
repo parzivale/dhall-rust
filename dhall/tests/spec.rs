@@ -587,11 +587,12 @@ fn ignore_test(variant: SpecTestKind, path: &str) -> bool {
         || path == "import/success/unit/cors/SelfImportAbsolute2"
         || path == "import/success/unit/cors/TwoHops"
         || path == "import/success/unit/cors/OnlyGithub"
-        // TODO: import headers
+        // TODO: send custom headers and implement the forwarding rules. These
+        // three also need a live server that varies its response on a request
+        // header, which the sandbox's import-spoofing proxy does not emulate.
         || path == "import/success/customHeaders"
         || path == "import/success/headerForwarding"
-        || path == "import/success/noHeaderForwarding"
-        || path == "import/failure/customHeadersUsingBoundVariable";
+        || path == "import/success/noHeaderForwarding";
 
     (cfg!(debug_assertions) && is_too_slow)
         || (cfg!(windows) && fails_on_windows)

@@ -3,7 +3,7 @@ use once_cell::sync::OnceCell;
 use std::marker::PhantomData;
 use std::ops::{Deref, Index};
 
-use crate::semantics::{Import, ImportLocation, ImportNode};
+use crate::semantics::{Hir, Import, ImportLocation, ImportNode};
 use crate::syntax::Span;
 use crate::Typed;
 
@@ -66,6 +66,14 @@ pub struct StoredImport<'cx> {
     cx: Ctxt<'cx>,
     pub base_location: ImportLocation,
     pub import: Import,
+    /// The `using [ ... ]` clause, if any.
+    ///
+    /// Resolved but not yet typechecked. The standard requires typechecking it
+    /// in an *empty* context: import resolution happens before normalization,
+    /// and custom headers must not be able to leak program state. So this is
+    /// traversed with no names in scope, and a header mentioning a surrounding
+    /// `let` is an unbound variable rather than a value.
+    pub headers: Option<Hir<'cx>>,
     pub span: Span,
     result: OnceCell<ImportResultId<'cx>>,
 }
@@ -108,12 +116,14 @@ impl<'cx> Ctxt<'cx> {
         self,
         base_location: ImportLocation,
         import: Import,
+        headers: Option<Hir<'cx>>,
         span: Span,
     ) -> ImportId<'cx> {
         let stored = StoredImport {
             cx: self,
             base_location,
             import,
+            headers,
             span,
             result: OnceCell::new(),
         };

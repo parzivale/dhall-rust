@@ -380,6 +380,16 @@ fn fetch_import<'cx>(
     let cx = env.cx();
     let import = &cx[import_id].import;
     let span = cx[import_id].span.clone();
+
+    // Typecheck the `using [ ... ]` clause before fetching anything. It was
+    // resolved in an empty context, so a header referring to a surrounding
+    // binding is an unbound variable and fails here.
+    // TODO: check it against `List { mapKey : Text, mapValue : Text }`, and
+    // actually send the headers.
+    if let Some(headers) = &cx[import_id].headers {
+        crate::semantics::typecheck(cx, headers)?;
+    }
+
     let location = cx[import_id].base_location.chain(import)?;
 
     // If the hash is in the on-disk cache, return
@@ -457,6 +467,39 @@ fn traverse_accumulate<'cx>(
             Some(v) => HirKind::Var(v),
             None => HirKind::MissingVar(var.clone()),
         },
+        // Handled here rather than after the generic traversal below, because
+        // the `using [ ... ]` clause must *not* be traversed in the enclosing
+        // scope. The standard typechecks custom headers in an empty context:
+        // resolution happens before normalization, and headers must not be able
+        // to leak program state. So a header mentioning a surrounding `let`
+        // resolves to an unbound variable, and fails to typecheck later.
+        //
+        // Headers are an import's only sub-expression, so nothing else here
+        // needs the generic traversal.
+        ExprKind::Import(import) => {
+            let headers = match &import.location {
+                ImportTarget::Remote(url) => {
+                    url.headers.as_ref().map(|headers| {
+                        traverse_accumulate(
+                            env,
+                            &mut NameEnv::new(),
+                            nodes,
+                            base_location,
+                            headers,
+                        )
+                    })
+                }
+                _ => None,
+            };
+            let import_id = cx.push_import(
+                base_location.clone(),
+                import.map_ref(|_| ()),
+                headers,
+                expr.span(),
+            );
+            nodes.push(ImportNode::Import(import_id));
+            HirKind::Import(import_id)
+        }
         ExprKind::Op(OpKind::BinOp(BinOp::ImportAlt, l, r)) => {
             let mut imports_l = Vec::new();
             let l = traverse_accumulate(
@@ -492,17 +535,6 @@ fn traverse_accumulate<'cx>(
                 hir
             });
             match kind {
-                ExprKind::Import(import) => {
-                    // TODO: evaluate import headers
-                    let import = import.map_ref(|_| ());
-                    let import_id = cx.push_import(
-                        base_location.clone(),
-                        import,
-                        expr.span(),
-                    );
-                    nodes.push(ImportNode::Import(import_id));
-                    HirKind::Import(import_id)
-                }
                 kind => HirKind::Expr(kind),
             }
         }
