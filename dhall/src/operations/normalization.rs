@@ -8,6 +8,25 @@ use crate::semantics::{
 };
 use crate::syntax::{ExprKind, Label, NumKind};
 
+/// Unwrap a checked `Natural` arithmetic result, or fail loudly.
+///
+/// Dhall's `Natural` is unbounded, but it is represented here as a `u64`.
+/// Normalization has no error channel, so an out-of-range result can only be
+/// reported by panicking. That is still an improvement on what this did before:
+/// wrapping silently to `0` in release while panicking in debug, so the same
+/// expression gave different answers depending on the build profile.
+fn checked_natural(result: Option<u64>, op: &str, x: &u64, y: &u64) -> u64 {
+    result.unwrap_or_else(|| {
+        // Explicit args rather than inline `{x}`: on edition 2018 a
+        // single-argument `panic!` passes the string through unformatted.
+        panic!(
+            "Natural overflow: `{} {} {}` does not fit in a u64. Dhall's \
+             Natural is unbounded, but this implementation is not.",
+            x, op, y
+        )
+    })
+}
+
 fn normalize_binop<'cx>(o: BinOp, x: Nir<'cx>, y: Nir<'cx>) -> Ret<'cx> {
     use BinOp::*;
     use NirKind::{EmptyListLit, NEListLit, Num, RecordLit, RecordType};
@@ -36,14 +55,14 @@ fn normalize_binop<'cx>(o: BinOp, x: Nir<'cx>, y: Nir<'cx>) -> Ret<'cx> {
         (NaturalPlus, Num(Natural(0)), _) => ret_nir(y),
         (NaturalPlus, _, Num(Natural(0))) => ret_nir(x),
         (NaturalPlus, Num(Natural(x)), Num(Natural(y))) => {
-            ret_kind(Num(Natural(x + y)))
+            ret_kind(Num(Natural(checked_natural(x.checked_add(*y), "+", x, y))))
         }
         (NaturalTimes, Num(Natural(0)), _) => ret_kind(Num(Natural(0))),
         (NaturalTimes, _, Num(Natural(0))) => ret_kind(Num(Natural(0))),
         (NaturalTimes, Num(Natural(1)), _) => ret_nir(y),
         (NaturalTimes, _, Num(Natural(1))) => ret_nir(x),
         (NaturalTimes, Num(Natural(x)), Num(Natural(y))) => {
-            ret_kind(Num(Natural(x * y)))
+            ret_kind(Num(Natural(checked_natural(x.checked_mul(*y), "*", x, y))))
         }
 
         (ListAppend, EmptyListLit(_), _) => ret_nir(y),
