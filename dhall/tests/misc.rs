@@ -20,8 +20,9 @@ fn manual_function_application() {
         // Convert from the internal representation. The result may not fit back
         // into a `u64`, so narrowing it is fallible.
         match m_nir.kind() {
-            NirKind::Num(NumKind::Natural(m)) => u64::try_from(m)
-                .expect("result does not fit in a u64"),
+            NirKind::Num(NumKind::Natural(m)) => {
+                u64::try_from(m).expect("result does not fit in a u64")
+            }
             _ => panic!("`f` was not `Natural -> Natural`"),
         }
     }

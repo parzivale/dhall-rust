@@ -38,7 +38,10 @@ pub enum ImportError {
     SanityCheck,
     /// A cross-origin remote import did not opt in via
     /// `Access-Control-Allow-Origin`.
-    CorsRejected { parent: String, child: String },
+    CorsRejected {
+        parent: String,
+        child: String,
+    },
     UnexpectedImport(Import<()>),
     ImportCycle(CyclesStack, ImportLocation),
     Url(url::ParseError),

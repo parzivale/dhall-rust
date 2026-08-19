@@ -757,8 +757,11 @@ fn stage_test_root(crate_dir: &Path, staging: &Path) -> PathBuf {
     // symlinked `dhall` would escape the staging root and resolve beside the
     // crate instead -- silently picking up a stray checkout over the pin.
     create_dir_all(staging.join("dhall")).unwrap();
-    symlink_dir(&crate_dir.join("tests"), &staging.join("dhall").join("tests"))
-        .unwrap();
+    symlink_dir(
+        &crate_dir.join("tests"),
+        &staging.join("dhall").join("tests"),
+    )
+    .unwrap();
     symlink_dir(&dhall_lang_dir, &staging.join("dhall-lang")).unwrap();
 
     staging.join("dhall-lang")
@@ -768,7 +771,8 @@ fn main() {
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
     let random_id = Alphanumeric.sample_string(&mut rand::rng(), 36);
-    let staging_dir = env::temp_dir().join(format!("dhall-tests-{}", random_id));
+    let staging_dir =
+        env::temp_dir().join(format!("dhall-tests-{}", random_id));
     let dhall_lang_dir = stage_test_root(&crate_dir, &staging_dir);
 
     // Test discovery walks `TEST_PATHS`, which are relative to the crate

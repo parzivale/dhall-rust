@@ -14,9 +14,8 @@ use crate::semantics::{
 };
 use crate::syntax;
 use crate::syntax::{
-    Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget, Label,
-    Span,
-    UnspannedExpr, URL,
+    Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget,
+    Label, Span, UnspannedExpr, URL,
 };
 use crate::{
     Ctxt, ImportAlternativeId, ImportId, ImportResultId, Parsed, Resolved,

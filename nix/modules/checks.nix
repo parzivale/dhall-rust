@@ -11,6 +11,16 @@ in rec {
   # Builds the workspace from the locked closure alone; no tests.
   build = package;
 
+  # Mirrors what .github/workflows/style.yml enforces, so that `nix flake
+  # check` covers everything CI does rather than most of it.
+  fmt = pkgs.runCommand "dhall-rust-fmt" {
+    nativeBuildInputs = [ pkgs.cargo pkgs.rustfmt ];
+  } ''
+    cd ${package.src}
+    cargo fmt --all -- --check
+    touch $out
+  '';
+
   tests = package.overrideAttrs (old: {
     pname = "dhall-rust-tests";
     doCheck = true;

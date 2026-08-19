@@ -371,9 +371,13 @@ fn apply_builtin<'cx>(
         },
         (Builtin::NaturalSubtract, [a, b]) => match (&*a.kind(), &*b.kind()) {
             // Truncated subtraction: `a - b` is 0 when it would go negative.
-            (Num(Natural(a)), Num(Natural(b))) => Ret::NirKind(Num(Natural(
-                if b > a { b - a } else { BigUint::zero() },
-            ))),
+            (Num(Natural(a)), Num(Natural(b))) => {
+                Ret::NirKind(Num(Natural(if b > a {
+                    b - a
+                } else {
+                    BigUint::zero()
+                })))
+            }
             (Num(Natural(a)), _) if a.is_zero() => Ret::Nir(b.clone()),
             (_, Num(Natural(b))) if b.is_zero() => {
                 Ret::NirKind(Num(Natural(BigUint::zero())))
@@ -476,7 +480,9 @@ fn apply_builtin<'cx>(
         }
         (Builtin::ListLength, [_, l]) => match &*l.kind() {
             EmptyListLit(_) => Ret::NirKind(Num(Natural(BigUint::zero()))),
-            NEListLit(xs) => Ret::NirKind(Num(Natural(BigUint::from(xs.len())))),
+            NEListLit(xs) => {
+                Ret::NirKind(Num(Natural(BigUint::from(xs.len()))))
+            }
             _ => Ret::DoneAsIs,
         },
         (Builtin::ListHead, [_, l]) => match &*l.kind() {
@@ -522,7 +528,9 @@ fn apply_builtin<'cx>(
                                     let mut kvs = HashMap::new();
                                     kvs.insert(
                                         "index".into(),
-                                        Nir::from_kind(Num(Natural(BigUint::from(i)))),
+                                        Nir::from_kind(Num(Natural(
+                                            BigUint::from(i),
+                                        ))),
                                     );
                                     kvs.insert("value".into(), e.clone());
                                     Nir::from_kind(RecordLit(kvs))

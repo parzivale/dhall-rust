@@ -153,7 +153,8 @@ pub fn derive_static_type_inner(
                 quote!(#ident)
             }
             syn::GenericParam::Lifetime(syn::LifetimeParam {
-                lifetime, ..
+                lifetime,
+                ..
             }) => quote!(&#lifetime ()),
             _ => unimplemented!(),
         });
