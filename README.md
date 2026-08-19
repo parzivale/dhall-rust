@@ -6,17 +6,17 @@
 [![coverage status][codecov-badge]][codecov-url]
 [![dependency status][depsrs-badge]][depsrs-url]
 
-[cratesio-badge]: https://img.shields.io/crates/v/serde_dhall.svg?style=flat-square
+[cratesio-badge]: https://img.shields.io/crates/v/sessiond-serde-dhall.svg?style=flat-square
 [docs-badge]: https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square
-[ci-badge]: https://img.shields.io/github/workflow/status/Nadrieril/dhall-rust/Test%20suite?style=flat-square
+[ci-badge]: https://img.shields.io/github/actions/workflow/status/parzivale/dhall-rust/tests.yml?branch=master&style=flat-square
 [codecov-badge]: https://img.shields.io/codecov/c/github/parzivale/dhall-rust?style=flat-square
-[depsrs-badge]: https://deps.rs/repo/github/nadrieril/dhall-rust/status.svg
+[depsrs-badge]: https://deps.rs/repo/github/parzivale/dhall-rust/status.svg
 
-[cratesio-url]: https://crates.io/crates/serde_dhall
-[docs-url]: https://docs.rs/serde_dhall
-[ci-url]: https://github.com/Nadrieril/dhall-rust/actions
+[cratesio-url]: https://crates.io/crates/sessiond-serde-dhall
+[docs-url]: https://docs.rs/sessiond-serde-dhall
+[ci-url]: https://github.com/parzivale/dhall-rust/actions
 [codecov-url]: https://codecov.io/gh/parzivale/dhall-rust
-[depsrs-url]: https://deps.rs/repo/github/nadrieril/dhall-rust
+[depsrs-url]: https://deps.rs/repo/github/parzivale/dhall-rust
 
 Dhall is a programmable configuration language optimized for
 maintainability.
@@ -33,9 +33,18 @@ You can find more details about the language by visiting the official website:
 
 # STATUS
 
-I am no longer maintaining this project. I got it to support about 90% of the language but then lost faith in the usability of dhall for my purposes. I am willing to hand this over to someone who's excited about dhall and rust.
+This is a maintained fork of [Nadrieril/dhall-rust][upstream], whose author
+stopped maintaining it and invited someone else to take it on. It is published
+under the `sessiond-` prefix so as not to claim the original crate names, and
+keeps the original BSD-2-Clause licence and copyright.
 
-# `dhall-rust`
+Relative to upstream it passes the whole dhall-lang test suite bar two cases
+(see [Standard-compliance](#standard-compliance)), where upstream left roughly
+a tenth of it unimplemented.
+
+[upstream]: https://github.com/Nadrieril/dhall-rust
+
+# `sessiond-dhall-rust`
 
 This is the Rust implementation of the Dhall configuration language.
 It is meant to be used to integrate Dhall in your application.
@@ -47,14 +56,14 @@ official tooling instead; instructions can be found
 ## Usage
 
 The supported way of integrating Dhall in your application is via the
-`serde_dhall` crate, which handles both reading Dhall into Rust values and
+`sessiond-serde-dhall` crate, which handles both reading Dhall into Rust values and
 writing Rust values back out as Dhall.
 
 Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-serde_dhall = "0.13.0"
+sessiond-serde-dhall = "1.0.0"
 ```
 
 Reading Dhall files is easy and leverages the wonderful [`serde`](https://crates.io/crates/serde) library.
@@ -66,7 +75,7 @@ use std::collections::BTreeMap;
 let data = "{ x = 1, y = 1 + 1 } : { x: Natural, y: Natural }";
 
 // Deserialize it to a Rust type.
-let deserialized_map: BTreeMap<String, u64> = serde_dhall::from_str(data).parse().unwrap();
+let deserialized_map: BTreeMap<String, u64> = sessiond_serde_dhall::from_str(data).parse().unwrap();
 
 let mut expected_map = BTreeMap::new();
 expected_map.insert("x".to_string(), 1);
@@ -108,7 +117,7 @@ This section will cover how we can get started on contributing this project.
 To get a copy of this repository we can run:
 
 ```bash
-$ git clone https://github.com/Nadrieril/dhall-rust.git
+$ git clone https://github.com/parzivale/dhall-rust.git
 ```
 
 But we also might note that it's better practice to fork the repository to your own workspace.

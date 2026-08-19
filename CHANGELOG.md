@@ -1,9 +1,17 @@
 # Changelog
 
-#### [Unreleased]
+#### [1.0.0] - 2026-08-19
 
 ##### Read this before upgrading
 
+- BREAKING CHANGE: **the crates have been renamed.** This is a fork of
+  [`Nadrieril/dhall-rust`](https://github.com/Nadrieril/dhall-rust), published
+  under a prefix rather than under the original crate names: `dhall` is now
+  `sessiond-dhall`, `serde_dhall` is now `sessiond-serde-dhall`, and
+  `dhall_proc_macros` is now `sessiond-dhall-proc-macros`. The Rust paths follow
+  (`sessiond_serde_dhall::from_str`, and so on); nothing else about the API
+  changed as a result of the rename. Versioning restarts at `1.0.0` and is
+  independent of upstream's `0.13.x`
 - BREAKING CHANGE: **semantic hashes have changed for some expressions.** `l ++ r`
   was not normalized when neither side was a text literal, so it stayed a `++`
   node instead of becoming `"${l}${r}"`. Any `sha256:` you recorded for an
@@ -11,8 +19,8 @@
   matches, and the import will be rejected. The hashes this produces now agree
   with the other implementations; the ones it produced before did not
 - BREAKING CHANGE: `Natural` and `Integer` are arbitrary-precision, so
-  `dhall::syntax::{Natural, Integer}` are `num_bigint::{BigUint, BigInt}` rather
-  than `u64` and `i64`. `serde_dhall` widens to `u128`/`i128` where needed and
+  `sessiond_dhall::syntax::{Natural, Integer}` are `num_bigint::{BigUint, BigInt}` rather
+  than `u64` and `i64`. `sessiond-serde-dhall` widens to `u128`/`i128` where needed and
   refuses a value that fits neither, instead of truncating
 - BREAKING CHANGE: a `Prelude.Map.Type` no longer deserializes into a `HashMap`.
   It is a `List { mapKey : k, mapValue : v }` in Dhall and now deserializes as
@@ -23,7 +31,7 @@
   it recovers only when an import could not be *retrieved*; a cyclic import, a
   failed integrity check, and an import that was fetched but does not parse or
   typecheck now propagate
-- BREAKING CHANGE: `dhall::error::AnnotationType` is this crate's own enum
+- BREAKING CHANGE: `sessiond_dhall::error::AnnotationType` is this crate's own enum
   rather than a re-export from `annotate-snippets`, so bumping that dependency
   is no longer a breaking change here
 - Error messages have changed. `annotate-snippets` 0.12 reports more accurate
@@ -32,7 +40,7 @@
 
 ##### Added
 
-- Deserialize Dhall functions into the new `serde_dhall::Function` type, and call them from Rust
+- Deserialize Dhall functions into the new `sessiond_serde_dhall::Function` type, and call them from Rust
   with `Function::apply()`. Functions serialize back to Dhall as well
 - BREAKING CHANGE: Add a `Function` variant to `SimpleValue` and a `Function` variant to
   `SimpleType`, so that `T -> U` is now a representable type
@@ -214,7 +222,7 @@
 - Initial release
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.13.0...HEAD
+[1.0.0]: https://github.com/parzivale/dhall-rust/releases/tag/v1.0.0
 [0.13.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.12.1...serde_dhall-v0.13.0
 [0.12.1]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.12.0...serde_dhall-v0.12.1
 [0.12.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.11.2...serde_dhall-v0.12.0

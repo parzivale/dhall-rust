@@ -2,8 +2,8 @@ use serde::ser;
 use serde::ser::Error as _;
 use std::collections::BTreeMap;
 
-use dhall::syntax::NumKind;
 use num_traits::ToPrimitive;
+use sessiond_dhall::syntax::NumKind;
 
 use crate::value::SimpleValue;
 use crate::{Error, ErrorKind, Result, SimpleType, Value};
@@ -20,7 +20,7 @@ pub trait Sealed {}
 /// # Example
 ///
 /// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
 /// use serde::Serialize;
 ///
 /// // Use serde's derive
@@ -32,7 +32,7 @@ pub trait Sealed {}
 ///
 /// // Convert a Point to a Dhall string.
 /// let point = Point { x: 0, y: 0 };
-/// let point_str = serde_dhall::serialize(&point).to_string()?;
+/// let point_str = sessiond_serde_dhall::serialize(&point).to_string()?;
 /// assert_eq!(point_str, "{ x = 0, y = 0 }".to_string());
 /// # Ok(())
 /// # }

@@ -1,6 +1,6 @@
-use dhall::error::Error as DhallError;
+use sessiond_dhall::error::Error as DhallError;
 
-/// Alias for a `Result` with the error type `serde_dhall::Error`.
+/// Alias for a `Result` with the error type `sessiond_serde_dhall::Error`.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Errors that can occur when deserializing Dhall data.

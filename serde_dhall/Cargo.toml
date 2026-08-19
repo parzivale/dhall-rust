@@ -1,24 +1,24 @@
 [package]
-name = "serde_dhall"
+name = "sessiond-serde-dhall"
 # remember to update html_root_url, README and changelog
-version = "0.13.0"
+version = "1.0.0"
 authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
 license = "BSD-2-Clause"
 description = "Dhall support for serde"
 readme = "../README.md"
-repository = "https://github.com/Nadrieril/dhall-rust"
+repository = "https://github.com/parzivale/dhall-rust"
 keywords = ["serde", "serialization", "dhall"]
 edition = "2018"
 include = ["src/**/*"]
 
 [features]
 default = [ "reqwest" ]
-reqwest = [ "dhall/reqwest" ]
+reqwest = [ "sessiond-dhall/reqwest" ]
 
 [dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
-dhall = { version = "=0.13.0", path = "../dhall",  default-features = false }
-dhall_proc_macros = { version = "=0.6.1", path = "../dhall_proc_macros" }
+sessiond-dhall = { version = "=1.0.0", path = "../dhall", default-features = false }
+sessiond-dhall-proc-macros = { version = "=1.0.0", path = "../dhall_proc_macros" }
 doc-comment = "0.3.4"
 # Dhall's Natural/Integer are unbounded; this converts them to Rust integers.
 num-traits = "0.2.19"

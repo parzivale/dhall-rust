@@ -10,10 +10,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use libtest_mimic::{Arguments, Trial};
 use walkdir::WalkDir;
 
-use dhall::error::Error as DhallError;
-use dhall::error::ErrorKind;
-use dhall::syntax::{binary, Expr};
-use dhall::{Ctxt, Normalized, Parsed, Resolved, Typed};
+use sessiond_dhall::error::Error as DhallError;
+use sessiond_dhall::error::ErrorKind;
+use sessiond_dhall::syntax::{binary, Expr};
+use sessiond_dhall::{Ctxt, Normalized, Parsed, Resolved, Typed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FileType {
@@ -258,7 +258,7 @@ impl TestFile {
             if Self::force_update() {
                 self.write_expr(expr)?;
             } else {
-                use dhall::syntax::binary::CBORValue;
+                use sessiond_dhall::syntax::binary::CBORValue;
                 // Pretty-print difference
                 assert_eq!(
                     minicbor::Decoder::new(&expr_data)
@@ -304,7 +304,7 @@ struct TestFeature {
     module_name: &'static str,
     /// Directory containing the tests files, relative to the base tests directory
     directory: &'static str,
-    /// Relevant variant of `dhall::tests::SpecTestKind`
+    /// Relevant variant of `sessiond_dhall::tests::SpecTestKind`
     variant: SpecTestKind,
     /// Type of the input file
     input_type: FileType,

@@ -17,7 +17,7 @@ where
     T: quote::ToTokens,
 {
     quote!(
-        <#ty as ::serde_dhall::StaticType>::static_type()
+        <#ty as ::sessiond_serde_dhall::StaticType>::static_type()
     )
 }
 
@@ -53,7 +53,7 @@ fn derive_for_struct(
         quote!( (#name.to_owned(), #ty) )
     });
     Ok(quote! {
-        ::serde_dhall::SimpleType::Record(
+        ::sessiond_serde_dhall::SimpleType::Record(
             vec![ #(#entries),* ].into_iter().collect()
         )
     })
@@ -92,7 +92,7 @@ fn derive_for_enum(
                             let ty = static_type(&field.ty);
                             let name = field.ident.as_ref().unwrap().to_string();
                             quote!( (#name.to_owned(), #ty) ) });
-                    let record = quote! {::serde_dhall::SimpleType::Record(
+                    let record = quote! {::sessiond_serde_dhall::SimpleType::Record(
                             vec![ #(#entries),* ].into_iter().collect()
                     )};
                     Ok(quote!( (#name.to_owned(), Some(#record)) ))
@@ -102,7 +102,7 @@ fn derive_for_enum(
         .collect::<Result<_, Error>>()?;
 
     Ok(quote! {
-        ::serde_dhall::SimpleType::Union(
+        ::sessiond_serde_dhall::SimpleType::Union(
             vec![ #(#entries),* ].into_iter().collect()
         )
     })
@@ -147,7 +147,7 @@ pub fn derive_static_type_inner(
         let mut local_where_clause = orig_where_clause.clone();
         local_where_clause
             .predicates
-            .push(parse_quote!(#ty: ::serde_dhall::StaticType));
+            .push(parse_quote!(#ty: ::sessiond_serde_dhall::StaticType));
         let phantoms = generics.params.iter().map(|param| match param {
             syn::GenericParam::Type(syn::TypeParam { ident, .. }) => {
                 quote!(#ident)
@@ -170,16 +170,16 @@ pub fn derive_static_type_inner(
     for ty in constraints.iter() {
         where_clause
             .predicates
-            .push(parse_quote!(#ty: ::serde_dhall::StaticType));
+            .push(parse_quote!(#ty: ::sessiond_serde_dhall::StaticType));
     }
 
     let ident = &input.ident;
     let tokens = quote! {
         #[allow(unused_parens)]
-        impl #impl_generics ::serde_dhall::StaticType
+        impl #impl_generics ::sessiond_serde_dhall::StaticType
                 for #ident #ty_generics
                 #where_clause {
-            fn static_type() -> ::serde_dhall::SimpleType {
+            fn static_type() -> ::sessiond_serde_dhall::SimpleType {
                 #(#assertions)*
                 #get_type
             }

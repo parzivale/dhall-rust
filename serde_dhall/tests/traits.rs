@@ -1,4 +1,4 @@
-use serde_dhall::{from_str, SimpleType, StaticType};
+use sessiond_serde_dhall::{from_str, SimpleType, StaticType};
 
 #[test]
 fn test_static_type() {
@@ -14,14 +14,14 @@ fn test_static_type() {
         parse("{ _1: Bool, _2: List Text }")
     );
 
-    #[derive(serde_dhall::StaticType)]
+    #[derive(sessiond_serde_dhall::StaticType)]
     #[allow(dead_code)]
     struct A {
         field1: bool,
         field2: Option<bool>,
     }
     assert_eq!(
-        <A as serde_dhall::StaticType>::static_type(),
+        <A as sessiond_serde_dhall::StaticType>::static_type(),
         parse("{ field1: Bool, field2: Optional Bool }")
     );
 

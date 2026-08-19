@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/dhall/0.13.0")]
+#![doc(html_root_url = "https://docs.rs/sessiond-dhall/1.0.0")]
 #![allow(
     clippy::implicit_hasher,
     clippy::module_inception,

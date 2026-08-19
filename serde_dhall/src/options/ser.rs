@@ -20,8 +20,8 @@ use crate::{Result, SimpleType, ToDhall};
 /// Serializing without a type annotation:
 ///
 /// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
-/// use serde_dhall::serialize;
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
+/// use sessiond_serde_dhall::serialize;
 ///
 /// let string = serialize(&1i64).to_string()?;
 /// assert_eq!(string, "+1".to_string());
@@ -32,8 +32,8 @@ use crate::{Result, SimpleType, ToDhall};
 /// Serializing with an automatic type annotation:
 ///
 /// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
-/// use serde_dhall::serialize;
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
+/// use sessiond_serde_dhall::serialize;
 ///
 /// let data: Option<u64> = None;
 /// let string = serialize(&data).static_type_annotation().to_string()?;
@@ -58,8 +58,8 @@ impl<'a, T> Serializer<'a, T, NoAnnot> {
     /// # Example
     ///
     /// ```
-    /// # fn main() -> serde_dhall::Result<()> {
-    /// use serde_dhall::{serialize, from_str, SimpleType, SimpleValue};
+    /// # fn main() -> sessiond_serde_dhall::Result<()> {
+    /// use sessiond_serde_dhall::{serialize, from_str, SimpleType, SimpleValue};
     ///
     /// let ty = from_str("< A | B: Bool >").parse()?;
     /// let data = SimpleValue::Union("A".to_string(), None);
@@ -100,9 +100,9 @@ impl<'a, T> Serializer<'a, T, NoAnnot> {
     /// # Example
     ///
     /// ```
-    /// # fn main() -> serde_dhall::Result<()> {
+    /// # fn main() -> sessiond_serde_dhall::Result<()> {
     /// use serde::Serialize;
-    /// use serde_dhall::{serialize, StaticType};
+    /// use sessiond_serde_dhall::{serialize, StaticType};
     ///
     /// #[derive(Serialize, StaticType)]
     /// enum MyOption {
@@ -146,8 +146,8 @@ where
     /// # Example
     ///
     /// ```rust
-    /// # fn main() -> serde_dhall::Result<()> {
-    /// use serde_dhall::serialize;
+    /// # fn main() -> sessiond_serde_dhall::Result<()> {
+    /// use sessiond_serde_dhall::serialize;
     ///
     /// let string = serialize(&1i64).static_type_annotation().to_string()?;
     /// assert_eq!(string, "+1".to_string());
@@ -176,9 +176,9 @@ where
 /// # Examples
 ///
 /// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
 /// use serde::Serialize;
-/// use serde_dhall::{serialize, StaticType};
+/// use sessiond_serde_dhall::{serialize, StaticType};
 ///
 /// #[derive(Serialize)]
 /// struct Point {
@@ -195,9 +195,9 @@ where
 /// ```
 ///
 /// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
 /// use serde::Serialize;
-/// use serde_dhall::{serialize, StaticType};
+/// use sessiond_serde_dhall::{serialize, StaticType};
 ///
 /// #[derive(Serialize, StaticType)]
 /// enum MyOption {

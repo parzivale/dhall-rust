@@ -12,7 +12,7 @@ let
   proxy = import ./spoof-proxy.nix { inherit pkgs; };
   llvm = pkgs.llvmPackages.bintools-unwrapped;
 in package.overrideAttrs (old: {
-  pname = "dhall-rust-coverage";
+  pname = "sessiond-dhall-rust-coverage";
 
   nativeBuildInputs = (old.nativeBuildInputs or [ ])
     ++ proxy.nativeBuildInputs ++ [ pkgs.cargo-llvm-cov ];

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use dhall::{Ctxt, Parsed};
+use sessiond_dhall::{Ctxt, Parsed};
 
 use crate::options::{HasAnnot, ManualAnnot, NoAnnot, StaticAnnot, TypeAnnot};
 use crate::SimpleType;
@@ -33,8 +33,8 @@ enum Source<'a> {
 /// Reading from a file:
 ///
 /// ```no_run
-/// # fn main() -> serde_dhall::Result<()> {
-/// use serde_dhall::from_file;
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
+/// use sessiond_serde_dhall::from_file;
 ///
 /// let data = from_file("foo.dhall").parse::<u64>()?;
 /// # Ok(())
@@ -44,9 +44,9 @@ enum Source<'a> {
 /// Reading from a file and checking the value against a provided type:
 ///
 /// ```no_run
-/// # fn main() -> serde_dhall::Result<()> {
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
 /// use std::collections::HashMap;
-/// use serde_dhall::{from_file, from_str};
+/// use sessiond_serde_dhall::{from_file, from_str};
 ///
 /// let ty = from_str("{ x: Natural, y: Natural }").parse()?;
 /// let data = from_file("foo.dhall")
@@ -61,7 +61,8 @@ pub struct Deserializer<'a, A> {
     annot: A,
     allow_imports: bool,
     allow_remote_imports: bool,
-    builtins: HashMap<dhall::syntax::Label, dhall::syntax::Expr>,
+    builtins:
+        HashMap<sessiond_dhall::syntax::Label, sessiond_dhall::syntax::Expr>,
     // use_cache: bool,
 }
 
@@ -100,10 +101,10 @@ impl<'a> Deserializer<'a, NoAnnot> {
     /// # Example
     ///
     /// ```
-    /// # fn main() -> serde_dhall::Result<()> {
+    /// # fn main() -> sessiond_serde_dhall::Result<()> {
     /// use std::collections::HashMap;
     /// use serde::Deserialize;
-    /// use serde_dhall::{from_str, SimpleType};
+    /// use sessiond_serde_dhall::{from_str, SimpleType};
     ///
     /// // Parse a Dhall type
     /// let type_str = "{ x: Natural, y: Natural }";
@@ -151,9 +152,9 @@ impl<'a> Deserializer<'a, NoAnnot> {
     /// # Example
     ///
     /// ```
-    /// # fn main() -> serde_dhall::Result<()> {
+    /// # fn main() -> sessiond_serde_dhall::Result<()> {
     /// use serde::Deserialize;
-    /// use serde_dhall::StaticType;
+    /// use sessiond_serde_dhall::StaticType;
     ///
     /// #[derive(Deserialize, StaticType)]
     /// struct Point {
@@ -165,7 +166,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
     /// let data = "{ x = 1, y = Some (1 + 1) }";
     ///
     /// // Convert the Dhall string to a Point.
-    /// let point = serde_dhall::from_str(data)
+    /// let point = sessiond_serde_dhall::from_str(data)
     ///     .static_type_annotation()
     ///     .parse::<Point>()?;
     /// assert_eq!(point.x, 1);
@@ -174,7 +175,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
     /// // Invalid data fails the type validation; deserialization would have succeeded otherwise.
     /// let invalid_data = "{ x = 1 }";
     /// assert!(
-    ///     serde_dhall::from_str(invalid_data)
+    ///     sessiond_serde_dhall::from_str(invalid_data)
     ///         .static_type_annotation()
     ///         .parse::<Point>()
     ///         .is_err()
@@ -204,13 +205,13 @@ impl<'a, A> Deserializer<'a, A> {
     /// # Example
     ///
     /// ```
-    /// # fn main() -> serde_dhall::Result<()> {
+    /// # fn main() -> sessiond_serde_dhall::Result<()> {
     /// use serde::Deserialize;
-    /// use serde_dhall::SimpleType;
+    /// use sessiond_serde_dhall::SimpleType;
     ///
     /// let data = "12 + ./other_file.dhall : Natural";
     /// assert!(
-    ///     serde_dhall::from_str(data)
+    ///     sessiond_serde_dhall::from_str(data)
     ///         .imports(false)
     ///         .parse::<u64>()
     ///         .is_err()
@@ -241,10 +242,10 @@ impl<'a, A> Deserializer<'a, A> {
     /// # Example
     ///
     /// ```
-    /// # fn main() -> serde_dhall::Result<()> {
+    /// # fn main() -> sessiond_serde_dhall::Result<()> {
     /// let data = "12 + https://example.com/other_file.dhall : Natural";
     /// assert!(
-    ///     serde_dhall::from_str(data)
+    ///     sessiond_serde_dhall::from_str(data)
     ///         .remote_imports(false)
     ///         .parse::<u64>()
     ///         .is_err()
@@ -275,7 +276,7 @@ impl<'a, A> Deserializer<'a, A> {
     /// # Example
     /// ```
     /// use serde::Deserialize;
-    /// use serde_dhall::StaticType;
+    /// use sessiond_serde_dhall::StaticType;
     /// use std::collections::HashMap;
     ///
     /// #[derive(Deserialize, StaticType, Debug, PartialEq)]
@@ -289,7 +290,7 @@ impl<'a, A> Deserializer<'a, A> {
     ///
     /// let data = "Newtype.Bar 0";
     ///
-    /// let deserialized = serde_dhall::from_str(data)
+    /// let deserialized = sessiond_serde_dhall::from_str(data)
     ///   .with_builtin_types(builtins)
     ///   .parse::<Newtype>()
     ///   .unwrap();
@@ -300,11 +301,9 @@ impl<'a, A> Deserializer<'a, A> {
         mut self,
         tys: impl IntoIterator<Item = (String, SimpleType)>,
     ) -> Self {
-        self.builtins.extend(
-            tys.into_iter().map(|(s, ty)| {
-                (dhall::syntax::Label::from_str(&s), ty.to_expr())
-            }),
-        );
+        self.builtins.extend(tys.into_iter().map(|(s, ty)| {
+            (sessiond_dhall::syntax::Label::from_str(&s), ty.to_expr())
+        }));
         self
     }
 
@@ -323,7 +322,7 @@ impl<'a, A> Deserializer<'a, A> {
     /// # Example
     /// ```
     /// use serde::Deserialize;
-    /// use serde_dhall::StaticType;
+    /// use sessiond_serde_dhall::StaticType;
     /// use std::collections::HashMap;
     ///
     /// #[derive(Deserialize, StaticType, Debug, PartialEq)]
@@ -334,7 +333,7 @@ impl<'a, A> Deserializer<'a, A> {
     ///
     /// let data = "Newtype.Bar 0";
     ///
-    /// let deserialized = serde_dhall::from_str(data)
+    /// let deserialized = sessiond_serde_dhall::from_str(data)
     ///   .with_builtin_type("Newtype".to_string(), Newtype::static_type())
     ///   .parse::<Newtype>()
     ///   .unwrap();
@@ -342,12 +341,14 @@ impl<'a, A> Deserializer<'a, A> {
     /// assert_eq!(deserialized, Newtype::Bar(0));
     /// ```
     pub fn with_builtin_type(mut self, name: String, ty: SimpleType) -> Self {
-        self.builtins
-            .insert(dhall::syntax::Label::from_str(&name), ty.to_expr());
+        self.builtins.insert(
+            sessiond_dhall::syntax::Label::from_str(&name),
+            ty.to_expr(),
+        );
         self
     }
 
-    fn _parse<T>(&self) -> dhall::error::Result<Result<Value>>
+    fn _parse<T>(&self) -> sessiond_dhall::error::Result<Result<Value>>
     where
         A: TypeAnnot,
         T: HasAnnot<A>,
@@ -392,8 +393,8 @@ impl<'a, A> Deserializer<'a, A> {
     /// # Example
     ///
     /// ```
-    /// # fn main() -> serde_dhall::Result<()> {
-    /// let data = serde_dhall::from_str("6 * 7").parse::<u64>()?;
+    /// # fn main() -> sessiond_serde_dhall::Result<()> {
+    /// let data = sessiond_serde_dhall::from_str("6 * 7").parse::<u64>()?;
     /// assert_eq!(data, 42);
     /// # Ok(())
     /// # }
@@ -423,7 +424,7 @@ impl<'a, A> Deserializer<'a, A> {
 /// # Example
 ///
 /// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
 /// use serde::Deserialize;
 ///
 /// // We use serde's derive feature
@@ -437,7 +438,7 @@ impl<'a, A> Deserializer<'a, A> {
 /// let data = "{ x = 1, y = 1 + 1 } : { x: Natural, y: Natural }";
 ///
 /// // Parse the Dhall string as a Point.
-/// let point: Point = serde_dhall::from_str(data).parse()?;
+/// let point: Point = sessiond_serde_dhall::from_str(data).parse()?;
 ///
 /// assert_eq!(point.x, 1);
 /// assert_eq!(point.y, 2);
@@ -465,7 +466,7 @@ pub fn from_str(s: &str) -> Deserializer<'_, NoAnnot> {
 ///
 /// ```no_run
 /// # use std::fs;
-/// # fn main() -> serde_dhall::Result<()> {
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
 /// use serde::Deserialize;
 ///
 /// // We use serde's derive feature
@@ -476,7 +477,7 @@ pub fn from_str(s: &str) -> Deserializer<'_, NoAnnot> {
 /// }
 /// let binary = fs::read("foo.dhallb").expect("Error reading the binary file");
 /// // Parse the binary Dhall as a Point.
-/// let point: Point = serde_dhall::from_binary(&binary).parse()?;
+/// let point: Point = sessiond_serde_dhall::from_binary(&binary).parse()?;
 /// # Ok(())
 /// # }
 /// ```
@@ -496,7 +497,7 @@ pub fn from_binary(b: &[u8]) -> Deserializer<'_, NoAnnot> {
 /// # Example
 ///
 /// ```no_run
-/// # fn main() -> serde_dhall::Result<()> {
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
 /// use serde::Deserialize;
 ///
 /// // We use serde's derive feature
@@ -507,7 +508,7 @@ pub fn from_binary(b: &[u8]) -> Deserializer<'_, NoAnnot> {
 /// }
 ///
 /// // Parse the Dhall file as a Point.
-/// let point: Point = serde_dhall::from_file("foo.dhall").parse()?;
+/// let point: Point = sessiond_serde_dhall::from_file("foo.dhall").parse()?;
 /// # Ok(())
 /// # }
 /// ```
@@ -529,7 +530,7 @@ pub fn from_file<'a, P: AsRef<Path>>(path: P) -> Deserializer<'a, NoAnnot> {
 /// # Example
 ///
 /// ```no_run
-/// # fn main() -> serde_dhall::Result<()> {
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
 /// use serde::Deserialize;
 ///
 /// // We use serde's derive feature
@@ -540,7 +541,7 @@ pub fn from_file<'a, P: AsRef<Path>>(path: P) -> Deserializer<'a, NoAnnot> {
 /// }
 ///
 /// // Parse the Dhall file as a Point.
-/// let point: Point = serde_dhall::from_binary_file("foo.dhallb").parse()?;
+/// let point: Point = sessiond_serde_dhall::from_binary_file("foo.dhallb").parse()?;
 /// # Ok(())
 /// # }
 /// ```

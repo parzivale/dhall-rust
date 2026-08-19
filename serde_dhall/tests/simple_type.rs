@@ -1,7 +1,7 @@
 mod simple_type {
     use std::collections::HashMap;
 
-    use serde_dhall::{serialize, SimpleType, StaticType, ToDhall};
+    use sessiond_serde_dhall::{serialize, SimpleType, StaticType, ToDhall};
 
     fn assert_ser<T>(s: &str, x: T)
     where

@@ -1,19 +1,20 @@
 use std::fmt;
 use std::result::Result as StdResult;
 
-use dhall::operations::OpKind;
-use dhall::semantics::{Hir, Nir, NirKind};
-use dhall::syntax::{binary, Expr, ExprKind, Span};
-use dhall::{Ctxt, Parsed};
+use sessiond_dhall::operations::OpKind;
+use sessiond_dhall::semantics::{Hir, Nir, NirKind};
+use sessiond_dhall::syntax::{binary, Expr, ExprKind, Span};
+use sessiond_dhall::{Ctxt, Parsed};
 
 use crate::{Error, ErrorKind, FromDhall, Result, SimpleType, ToDhall, Value};
 
 /// Serde has no notion of a function, so a [`Function`] is smuggled through the serde data model
 /// as a newtype struct with this name, carrying the binary encoding of the function as its
 /// payload. Both ends of the conversion recognize the name and handle it specially.
-pub(crate) const FUNCTION_TOKEN: &str = "$serde_dhall::private::Function";
+pub(crate) const FUNCTION_TOKEN: &str =
+    "$sessiond_serde_dhall::private::Function";
 
-fn dhall_err(e: impl Into<dhall::error::Error>) -> Error {
+fn dhall_err(e: impl Into<sessiond_dhall::error::Error>) -> Error {
     Error(ErrorKind::Dhall(e.into()))
 }
 
@@ -31,9 +32,9 @@ fn dhall_err(e: impl Into<dhall::error::Error>) -> Error {
 /// run whenever you like, as many times as you like:
 ///
 /// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
 /// use serde::Deserialize;
-/// use serde_dhall::Function;
+/// use sessiond_serde_dhall::Function;
 ///
 /// #[derive(Deserialize)]
 /// struct Config {
@@ -41,7 +42,7 @@ fn dhall_err(e: impl Into<dhall::error::Error>) -> Error {
 ///     greeting: Function,
 /// }
 ///
-/// let config: Config = serde_dhall::from_str(
+/// let config: Config = sessiond_serde_dhall::from_str(
 ///     r#"{ port = 8080, greeting = \(name : Text) -> "Hello, ${name}!" }"#,
 /// )
 /// .parse()?;
@@ -73,12 +74,12 @@ fn dhall_err(e: impl Into<dhall::error::Error>) -> Error {
 /// character the same as, the one that went in.
 ///
 /// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
-/// use serde_dhall::Function;
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
+/// use sessiond_serde_dhall::Function;
 ///
-/// let f: Function = serde_dhall::from_str("\\(x : Natural) -> x + 1").parse()?;
+/// let f: Function = sessiond_serde_dhall::from_str("\\(x : Natural) -> x + 1").parse()?;
 /// assert_eq!(
-///     serde_dhall::serialize(&f).to_string()?,
+///     sessiond_serde_dhall::serialize(&f).to_string()?,
 ///     "λ(x : Natural) → x + 1".to_string()
 /// );
 /// # Ok(())
@@ -90,9 +91,9 @@ fn dhall_err(e: impl Into<dhall::error::Error>) -> Error {
 pub struct Function {
     /// The normal form of the function, as a closed expression free of imports.
     expr: Expr,
-    /// The argument type, if it is a type `serde_dhall` can represent.
+    /// The argument type, if it is a type `sessiond_serde_dhall` can represent.
     input_ty: Option<SimpleType>,
-    /// The return type, if it is a type `serde_dhall` can represent.
+    /// The return type, if it is a type `sessiond_serde_dhall` can represent.
     output_ty: Option<SimpleType>,
 }
 
@@ -163,11 +164,11 @@ impl Function {
     /// # Example
     ///
     /// ```rust
-    /// # fn main() -> serde_dhall::Result<()> {
-    /// use serde_dhall::Function;
+    /// # fn main() -> sessiond_serde_dhall::Result<()> {
+    /// use sessiond_serde_dhall::Function;
     ///
     /// let f: Function =
-    ///     serde_dhall::from_str("\\(x : Natural) -> x + 1").parse()?;
+    ///     sessiond_serde_dhall::from_str("\\(x : Natural) -> x + 1").parse()?;
     ///
     /// assert_eq!(f.apply::<_, u64>(1u64)?, 2);
     /// assert_eq!(f.apply::<_, u64>(41u64)?, 42);
@@ -185,11 +186,11 @@ impl Function {
     /// back another `Function`.
     ///
     /// ```rust
-    /// # fn main() -> serde_dhall::Result<()> {
-    /// use serde_dhall::Function;
+    /// # fn main() -> sessiond_serde_dhall::Result<()> {
+    /// use sessiond_serde_dhall::Function;
     ///
     /// let f: Function =
-    ///     serde_dhall::from_str("\\(x : Natural) -> \\(y : Natural) -> x * y")
+    ///     sessiond_serde_dhall::from_str("\\(x : Natural) -> \\(y : Natural) -> x * y")
     ///         .parse()?;
     ///
     /// let times_six: Function = f.apply(6u64)?;
@@ -201,15 +202,15 @@ impl Function {
     /// The argument may itself be a `Function`, so higher-order functions work too.
     ///
     /// ```rust
-    /// # fn main() -> serde_dhall::Result<()> {
-    /// use serde_dhall::Function;
+    /// # fn main() -> sessiond_serde_dhall::Result<()> {
+    /// use sessiond_serde_dhall::Function;
     ///
-    /// let twice: Function = serde_dhall::from_str(
+    /// let twice: Function = sessiond_serde_dhall::from_str(
     ///     "\\(f : Natural -> Natural) -> \\(x : Natural) -> f (f x)",
     /// )
     /// .parse()?;
     /// let increment: Function =
-    ///     serde_dhall::from_str("\\(x : Natural) -> x + 1").parse()?;
+    ///     sessiond_serde_dhall::from_str("\\(x : Natural) -> x + 1").parse()?;
     ///
     /// let increment_twice: Function = twice.apply(increment)?;
     /// assert_eq!(increment_twice.apply::<_, u64>(40u64)?, 42);
@@ -242,7 +243,7 @@ impl Function {
         })
     }
 
-    /// The type of the function's argument, if `serde_dhall` can represent it.
+    /// The type of the function's argument, if `sessiond_serde_dhall` can represent it.
     ///
     /// This is `None` for functions whose argument type isn't a [`SimpleType`], e.g. the
     /// polymorphic `λ(a : Type) → λ(x : a) → x`.
@@ -250,11 +251,11 @@ impl Function {
     /// # Example
     ///
     /// ```rust
-    /// # fn main() -> serde_dhall::Result<()> {
-    /// use serde_dhall::{Function, SimpleType};
+    /// # fn main() -> sessiond_serde_dhall::Result<()> {
+    /// use sessiond_serde_dhall::{Function, SimpleType};
     ///
     /// let f: Function =
-    ///     serde_dhall::from_str("\\(x : Natural) -> x + 1").parse()?;
+    ///     sessiond_serde_dhall::from_str("\\(x : Natural) -> x + 1").parse()?;
     ///
     /// assert_eq!(f.input_type(), Some(SimpleType::Natural));
     /// # Ok(())
@@ -264,7 +265,7 @@ impl Function {
         self.input_ty.clone()
     }
 
-    /// The type of the function's result, if `serde_dhall` can represent it.
+    /// The type of the function's result, if `sessiond_serde_dhall` can represent it.
     ///
     /// This is `None` for functions whose result type isn't a [`SimpleType`], and in particular
     /// for dependent function types like `∀(a : Type) → List a`.
@@ -272,11 +273,11 @@ impl Function {
     /// # Example
     ///
     /// ```rust
-    /// # fn main() -> serde_dhall::Result<()> {
-    /// use serde_dhall::{Function, SimpleType};
+    /// # fn main() -> sessiond_serde_dhall::Result<()> {
+    /// use sessiond_serde_dhall::{Function, SimpleType};
     ///
     /// let f: Function =
-    ///     serde_dhall::from_str("\\(x : Natural) -> [x]").parse()?;
+    ///     sessiond_serde_dhall::from_str("\\(x : Natural) -> [x]").parse()?;
     ///
     /// assert_eq!(
     ///     f.output_type(),

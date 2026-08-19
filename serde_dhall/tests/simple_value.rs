@@ -1,6 +1,6 @@
 mod simple_value {
     use serde::{Deserialize, Serialize};
-    use serde_dhall::{
+    use sessiond_serde_dhall::{
         from_str, serialize, FromDhall, NumKind, SimpleValue, ToDhall, Value,
     };
 

@@ -1,6 +1,6 @@
 mod test_enum {
     use serde::{Deserialize, Serialize};
-    use serde_dhall::StaticType;
+    use sessiond_serde_dhall::StaticType;
 
     #[derive(
         Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, StaticType,
@@ -32,13 +32,13 @@ mod test_enum {
             y: 2.0,
             z: 3.0,
         };
-        let v_str = serde_dhall::serialize(&v)
+        let v_str = sessiond_serde_dhall::serialize(&v)
             .static_type_annotation()
             .to_string()
             .unwrap();
         println!("{v_str:?}");
         let v_deser: EnumVariants =
-            serde_dhall::from_str(&v_str).parse().unwrap();
+            sessiond_serde_dhall::from_str(&v_str).parse().unwrap();
         assert_eq!(v_deser, v);
     }
 
@@ -49,13 +49,13 @@ mod test_enum {
             field_b: ParentStruct { id0: 301, id1: 0 },
         };
 
-        let v_str = serde_dhall::serialize(&v)
+        let v_str = sessiond_serde_dhall::serialize(&v)
             .static_type_annotation()
             .to_string()
             .unwrap();
         println!("{v_str:?}");
         let v_deser: EnumVariants =
-            serde_dhall::from_str(&v_str).parse().unwrap();
+            sessiond_serde_dhall::from_str(&v_str).parse().unwrap();
         assert_eq!(v_deser, v);
     }
 
@@ -63,13 +63,13 @@ mod test_enum {
     fn test_enum_unitary() {
         let v = EnumVariants::Unitary;
 
-        let v_str = serde_dhall::serialize(&v)
+        let v_str = sessiond_serde_dhall::serialize(&v)
             .static_type_annotation()
             .to_string()
             .unwrap();
         println!("{v_str:?}");
         let v_deser: EnumVariants =
-            serde_dhall::from_str(&v_str).parse().unwrap();
+            sessiond_serde_dhall::from_str(&v_str).parse().unwrap();
         assert_eq!(v_deser, v);
     }
 }

@@ -12,7 +12,7 @@ in rec {
 
   # Mirrors what .github/workflows/style.yml enforces, so that `nix flake
   # check` covers everything CI does rather than most of it.
-  fmt = pkgs.runCommand "dhall-rust-fmt" {
+  fmt = pkgs.runCommand "sessiond-dhall-rust-fmt" {
     nativeBuildInputs = [ pkgs.cargo pkgs.rustfmt ];
   } ''
     cd ${package.src}
@@ -21,7 +21,7 @@ in rec {
   '';
 
   tests = package.overrideAttrs (old: {
-    pname = "dhall-rust-tests";
+    pname = "sessiond-dhall-rust-tests";
     doCheck = true;
 
     nativeCheckInputs =
@@ -40,7 +40,7 @@ in rec {
   # `is_too_slow` set, which only runs in release -- so the two together are
   # what covers everything.
   tests-debug = tests.overrideAttrs (_: {
-    pname = "dhall-rust-tests-debug";
+    pname = "sessiond-dhall-rust-tests-debug";
     cargoBuildType = "debug";
     cargoCheckType = "debug";
   });

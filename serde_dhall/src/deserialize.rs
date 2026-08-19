@@ -7,8 +7,8 @@ use serde::de::value::{
 };
 use serde::de::{Deserialize as _, VariantAccess as _};
 
-use dhall::syntax::NumKind;
 use num_traits::ToPrimitive;
+use sessiond_dhall::syntax::NumKind;
 
 use crate::function::FUNCTION_TOKEN;
 use crate::value::SimpleValue;
@@ -25,7 +25,7 @@ pub trait Sealed {}
 /// # Example
 ///
 /// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
 /// use serde::Deserialize;
 ///
 /// // Use serde's derive
@@ -36,7 +36,7 @@ pub trait Sealed {}
 /// }
 ///
 /// // Convert a Dhall string to a Point.
-/// let point: Point = serde_dhall::from_str("{ x = 1, y = 1 + 1 }").parse()?;
+/// let point: Point = sessiond_serde_dhall::from_str("{ x = 1, y = 1 + 1 }").parse()?;
 /// # Ok(())
 /// # }
 /// ```
@@ -54,7 +54,7 @@ impl<T> Sealed for T where T: serde::de::DeserializeOwned {}
 /// # Example
 ///
 /// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
 /// use std::collections::BTreeMap;
 /// use serde::Deserialize;
 ///
@@ -69,16 +69,16 @@ impl<T> Sealed for T where T: serde::de::DeserializeOwned {}
 /// let mut data = BTreeMap::new();
 /// data.insert(
 ///     "x".to_string(),
-///     serde_dhall::SimpleValue::Num(serde_dhall::NumKind::Natural(1u32.into()))
+///     sessiond_serde_dhall::SimpleValue::Num(sessiond_serde_dhall::NumKind::Natural(1u32.into()))
 /// );
 /// data.insert(
 ///     "y".to_string(),
-///     serde_dhall::SimpleValue::Num(serde_dhall::NumKind::Natural(2u32.into()))
+///     sessiond_serde_dhall::SimpleValue::Num(sessiond_serde_dhall::NumKind::Natural(2u32.into()))
 /// );
-/// let data = serde_dhall::SimpleValue::Record(data);
+/// let data = sessiond_serde_dhall::SimpleValue::Record(data);
 ///
 /// // Parse the Dhall value as a Point.
-/// let point: Point = serde_dhall::from_simple_value(data)?;
+/// let point: Point = sessiond_serde_dhall::from_simple_value(data)?;
 ///
 /// assert_eq!(point.x, 1);
 /// assert_eq!(point.y, 2);
@@ -134,7 +134,7 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
             return visitor.visit_newtype_struct(self).map_err(|_| {
                 Error(ErrorKind::Deserialize(
                     "cannot deserialize a Dhall function into this type; \
-                     deserialize it into a `serde_dhall::Function` instead"
+                     deserialize it into a `sessiond_serde_dhall::Function` instead"
                         .to_string(),
                 ))
             });

@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, HashMap};
 use std::result::Result as StdResult;
 
-use dhall::builtins::Builtin;
-use dhall::operations::OpKind;
-use dhall::semantics::{Hir, HirKind, Nir, NirKind};
-pub use dhall::syntax::NumKind;
-use dhall::syntax::{Expr, ExprKind, Span};
-use dhall::Ctxt;
+use sessiond_dhall::builtins::Builtin;
+use sessiond_dhall::operations::OpKind;
+use sessiond_dhall::semantics::{Hir, HirKind, Nir, NirKind};
+pub use sessiond_dhall::syntax::NumKind;
+use sessiond_dhall::syntax::{Expr, ExprKind, Span};
+use sessiond_dhall::Ctxt;
 
 use crate::{Error, ErrorKind, FromDhall, Function, Result, ToDhall};
 
@@ -24,17 +24,17 @@ pub struct Value {
     kind: ValueKind,
 }
 
-/// A value of the kind that can be decoded by `serde_dhall`, e.g. `{ x = True, y = [1, 2, 3] }`.
+/// A value of the kind that can be decoded by `sessiond_serde_dhall`, e.g. `{ x = True, y = [1, 2, 3] }`.
 /// This can be obtained with [`from_str()`] or [`from_file()`].
 /// It can also be deserialized into Rust types with [`from_simple_value()`].
 ///
 /// # Examples
 ///
 /// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
 /// use std::collections::BTreeMap;
 /// use serde::Deserialize;
-/// use serde_dhall::{from_simple_value, NumKind, SimpleValue};
+/// use sessiond_serde_dhall::{from_simple_value, NumKind, SimpleValue};
 ///
 /// #[derive(Debug, PartialEq, Eq, Deserialize)]
 /// struct Foo {
@@ -43,7 +43,7 @@ pub struct Value {
 /// }
 ///
 /// let value: SimpleValue =
-///     serde_dhall::from_str("{ x = True, y = [1, 2, 3] }").parse()?;
+///     sessiond_serde_dhall::from_str("{ x = True, y = [1, 2, 3] }").parse()?;
 ///
 /// assert_eq!(
 ///     value,
@@ -79,12 +79,12 @@ pub struct Value {
 /// ```
 ///
 /// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
 /// use std::collections::BTreeMap;
-/// use serde_dhall::{NumKind, SimpleValue};
+/// use sessiond_serde_dhall::{NumKind, SimpleValue};
 ///
 /// let value: SimpleValue =
-///     serde_dhall::from_str("{ x = 1, y = 2 }").parse()?;
+///     sessiond_serde_dhall::from_str("{ x = 1, y = 2 }").parse()?;
 ///
 /// let mut map = BTreeMap::new();
 /// map.insert("x".to_string(), SimpleValue::Num(NumKind::Natural(1u32.into())));
@@ -115,7 +115,7 @@ pub enum SimpleValue {
     Function(Function),
 }
 
-/// The type of a value that can be decoded by `serde_dhall`, e.g. `{ x: Bool, y: List Natural }`.
+/// The type of a value that can be decoded by `sessiond_serde_dhall`, e.g. `{ x: Bool, y: List Natural }`.
 ///
 /// A `SimpleType` is used when deserializing values to ensure they are of the expected type.
 /// Rather than letting `serde` handle potential type mismatches, this uses the type-checking
@@ -158,7 +158,7 @@ pub enum SimpleValue {
 /// explicitly if you want a `HashMap`:
 ///
 /// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
 /// use std::collections::HashMap;
 /// use serde::Deserialize;
 ///
@@ -169,7 +169,7 @@ pub enum SimpleValue {
 /// }
 ///
 /// let entries: Vec<Entry> =
-///     serde_dhall::from_str("toMap { x = 1, y = 2 }").parse()?;
+///     sessiond_serde_dhall::from_str("toMap { x = 1, y = 2 }").parse()?;
 /// let map: HashMap<String, u64> =
 ///     entries.into_iter().map(|e| (e.mapKey, e.mapValue)).collect();
 ///
@@ -181,8 +181,8 @@ pub enum SimpleValue {
 /// # Examples
 ///
 /// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
-/// use serde_dhall::{SimpleType, StaticType};
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
+/// use sessiond_serde_dhall::{SimpleType, StaticType};
 ///
 /// #[derive(StaticType)]
 /// struct Foo {
@@ -191,7 +191,7 @@ pub enum SimpleValue {
 /// }
 ///
 /// let ty: SimpleType =
-///     serde_dhall::from_str("{ x: Bool, y: List Natural }").parse()?;
+///     sessiond_serde_dhall::from_str("{ x: Bool, y: List Natural }").parse()?;
 ///
 /// assert_eq!(Foo::static_type(), ty);
 /// # Ok(())
@@ -199,12 +199,12 @@ pub enum SimpleValue {
 /// ```
 ///
 /// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
 /// use std::collections::HashMap;
-/// use serde_dhall::SimpleType;
+/// use sessiond_serde_dhall::SimpleType;
 ///
 /// let ty: SimpleType =
-///     serde_dhall::from_str("{ x: Natural, y: Natural }").parse()?;
+///     sessiond_serde_dhall::from_str("{ x: Natural, y: Natural }").parse()?;
 ///
 /// let mut map = HashMap::new();
 /// map.insert("x".to_string(), SimpleType::Natural);

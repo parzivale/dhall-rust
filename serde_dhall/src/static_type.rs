@@ -17,8 +17,8 @@ use crate::SimpleType;
 /// # Example
 ///
 /// ```rust
-/// # fn main() -> serde_dhall::Result<()> {
-/// use serde_dhall::{SimpleType, StaticType};
+/// # fn main() -> sessiond_serde_dhall::Result<()> {
+/// use sessiond_serde_dhall::{SimpleType, StaticType};
 ///
 /// #[derive(StaticType)]
 /// struct Foo {
@@ -27,7 +27,7 @@ use crate::SimpleType;
 /// }
 ///
 /// let ty: SimpleType =
-///     serde_dhall::from_str("{ x: Bool, y: List Natural }").parse()?;
+///     sessiond_serde_dhall::from_str("{ x: Bool, y: List Natural }").parse()?;
 ///
 /// assert_eq!(Foo::static_type(), ty);
 /// # Ok(())
@@ -39,9 +39,9 @@ pub trait StaticType {
     /// # Example
     ///
     /// ```rust
-    /// # fn main() -> serde_dhall::Result<()> {
+    /// # fn main() -> sessiond_serde_dhall::Result<()> {
     /// use serde::Deserialize;
-    /// use serde_dhall::{SimpleType, StaticType};
+    /// use sessiond_serde_dhall::{SimpleType, StaticType};
     ///
     /// // Using `derive(StaticType)` here would give it the type `{ _1: List Natural }`.
     /// #[derive(Deserialize)]
@@ -54,7 +54,7 @@ pub trait StaticType {
     ///     }
     /// }
     ///
-    /// let foo = serde_dhall::from_str("[ 1, 2 ]")
+    /// let foo = sessiond_serde_dhall::from_str("[ 1, 2 ]")
     ///     .static_type_annotation()
     ///     .parse::<Foo>()?;
     ///

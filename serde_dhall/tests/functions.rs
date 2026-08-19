@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use serde_dhall::{from_str, Function, SimpleType, SimpleValue};
+use sessiond_serde_dhall::{from_str, Function, SimpleType, SimpleValue};
 use std::collections::HashMap;
 
 #[test]
@@ -247,7 +247,7 @@ fn a_function_survives_a_simple_value_round_trip() {
         f: Function,
         y: u64,
     }
-    let foo: Foo = serde_dhall::from_simple_value(val).unwrap();
+    let foo: Foo = sessiond_serde_dhall::from_simple_value(val).unwrap();
     assert_eq!(foo.y, 1);
     assert_eq!(foo.f.apply::<_, u64>(1u64).unwrap(), 2);
 }
@@ -265,7 +265,7 @@ fn deserializing_a_function_into_another_type_fails() {
 fn a_function_serializes_back_to_dhall() {
     let f: Function = from_str("\\(x : Natural) -> x + 1").parse().unwrap();
     assert_eq!(
-        serde_dhall::serialize(&f).to_string().unwrap(),
+        sessiond_serde_dhall::serialize(&f).to_string().unwrap(),
         "λ(x : Natural) → x + 1".to_string()
     );
 
@@ -275,7 +275,7 @@ fn a_function_serializes_back_to_dhall() {
         .parse()
         .unwrap();
     assert_eq!(
-        serde_dhall::serialize(&f).to_string().unwrap(),
+        sessiond_serde_dhall::serialize(&f).to_string().unwrap(),
         "λ(x : Natural) → x + 1".to_string()
     );
 }
@@ -291,7 +291,9 @@ fn a_config_containing_functions_round_trips() {
     let src =
         r#"{ greeting = \(name : Text) -> "Hello, ${name}!", port = 8080 }"#;
     let config: Config = from_str(src).parse().unwrap();
-    let out = serde_dhall::serialize(&config).to_string().unwrap();
+    let out = sessiond_serde_dhall::serialize(&config)
+        .to_string()
+        .unwrap();
 
     // The re-serialized config parses back to something that behaves the same.
     let config: Config = from_str(&out).parse().unwrap();
@@ -307,7 +309,7 @@ fn a_function_can_be_serialized_through_simple_value() {
     let f: Function = from_str("\\(x : Natural) -> x").parse().unwrap();
     let val = SimpleValue::Function(f);
     assert_eq!(
-        serde_dhall::serialize(&val).to_string().unwrap(),
+        sessiond_serde_dhall::serialize(&val).to_string().unwrap(),
         "λ(x : Natural) → x".to_string()
     );
 }
@@ -329,13 +331,13 @@ fn a_function_can_be_passed_to_another_function() {
 fn a_function_serialized_with_a_type_annotation_is_checked() {
     let f: Function = from_str("\\(x : Natural) -> x").parse().unwrap();
     let fn_ty: SimpleType = from_str("Natural -> Natural").parse().unwrap();
-    assert!(serde_dhall::serialize(&f)
+    assert!(sessiond_serde_dhall::serialize(&f)
         .type_annotation(&fn_ty)
         .to_string()
         .is_ok());
 
     // A non-function annotation is rejected.
-    assert!(serde_dhall::serialize(&f)
+    assert!(sessiond_serde_dhall::serialize(&f)
         .type_annotation(&SimpleType::Natural)
         .to_string()
         .is_err());
@@ -363,11 +365,14 @@ fn functions_serialize_from_every_nesting_position() {
     let expected = "λ(x : Natural) → x".to_string();
 
     // Bare.
-    assert_eq!(serde_dhall::serialize(&f).to_string().unwrap(), expected);
+    assert_eq!(
+        sessiond_serde_dhall::serialize(&f).to_string().unwrap(),
+        expected
+    );
 
     // Through `serialize_some`.
     assert_eq!(
-        serde_dhall::serialize(&Some(f.clone()))
+        sessiond_serde_dhall::serialize(&Some(f.clone()))
             .to_string()
             .unwrap(),
         format!("Some ({})", expected)
@@ -375,7 +380,7 @@ fn functions_serialize_from_every_nesting_position() {
 
     // Through `serialize_seq`.
     assert_eq!(
-        serde_dhall::serialize(&vec![f.clone()])
+        sessiond_serde_dhall::serialize(&vec![f.clone()])
             .to_string()
             .unwrap(),
         format!("[{}]", expected)
@@ -387,7 +392,7 @@ fn functions_serialize_from_every_nesting_position() {
         f: Function,
     }
     assert_eq!(
-        serde_dhall::serialize(&Wrapper { f: f.clone() })
+        sessiond_serde_dhall::serialize(&Wrapper { f: f.clone() })
             .to_string()
             .unwrap(),
         format!("{{ f = {} }}", expected)
@@ -401,7 +406,7 @@ fn functions_serialize_from_every_nesting_position() {
     let ty: SimpleType =
         from_str("< F : Natural -> Natural >").parse().unwrap();
     assert_eq!(
-        serde_dhall::serialize(&E::F(f))
+        sessiond_serde_dhall::serialize(&E::F(f))
             .type_annotation(&ty)
             .to_string()
             .unwrap(),

@@ -1,9 +1,9 @@
 use std::convert::TryFrom;
 
-use dhall::error::Error;
-use dhall::semantics::*;
-use dhall::syntax::*;
-use dhall::*;
+use sessiond_dhall::error::Error;
+use sessiond_dhall::semantics::*;
+use sessiond_dhall::syntax::*;
+use sessiond_dhall::*;
 
 /// Test that showcases someone using the `dhall` crate directly for a simple operation. If
 /// possible try not to break this too much. See

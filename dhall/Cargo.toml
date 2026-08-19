@@ -1,12 +1,12 @@
 [package]
-name = "dhall"
+name = "sessiond-dhall"
 # remember to update html_root_url
-version = "0.13.0"
+version = "1.0.0"
 authors = ["NanoTech <nanotech@nanotechcorp.net>", "Nadrieril <nadrieril@users.noreply.github.com>"]
 license = "BSD-2-Clause"
 description = "Implementation of the Dhall configuration language"
 readme = "README.md"
-repository = "https://github.com/Nadrieril/dhall-rust"
+repository = "https://github.com/parzivale/dhall-rust"
 edition = "2018"
 build = "build.rs"
 include = ["src/**/*", "README.md", "build.rs"]

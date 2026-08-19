@@ -11,8 +11,8 @@ let
       in !(builtins.elem base [ "target" "dhall-lang" ".git" "result" ]);
   };
 in pkgs.rustPlatform.buildRustPackage {
-  pname = "dhall-rust";
-  version = "0.13.0";
+  pname = "sessiond-dhall-rust";
+  version = "1.0.0";
   inherit src;
 
   cargoLock.lockFile = ../../Cargo.lock;
@@ -27,7 +27,7 @@ in pkgs.rustPlatform.buildRustPackage {
 
   meta = with lib; {
     description = "Implementation of the Dhall configuration language";
-    homepage = "https://github.com/Nadrieril/dhall-rust";
+    homepage = "https://github.com/parzivale/dhall-rust";
     license = licenses.bsd2;
   };
 }

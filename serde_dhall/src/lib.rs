@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/serde_dhall/0.13.0")]
+#![doc(html_root_url = "https://docs.rs/sessiond-serde-dhall/1.0.0")]
 #![allow(unknown_lints)] // for `rustdoc::missing_doc_code_examples`
 #![warn(missing_docs, rustdoc::missing_doc_code_examples)]
 //! [Dhall][dhall] is a programmable configuration language that provides a non-repetitive
@@ -23,14 +23,14 @@
 //! This could mean a common Rust type like `HashMap`:
 //!
 //! ```rust
-//! # fn main() -> serde_dhall::Result<()> {
+//! # fn main() -> sessiond_serde_dhall::Result<()> {
 //! use std::collections::HashMap;
 //!
 //! // Some Dhall data
 //! let data = "{ x = 1, y = 1 + 1 } : { x: Natural, y: Natural }";
 //!
 //! // Deserialize it to a Rust type.
-//! let deserialized_map: HashMap<String, u64> = serde_dhall::from_str(data).parse()?;
+//! let deserialized_map: HashMap<String, u64> = sessiond_serde_dhall::from_str(data).parse()?;
 //!
 //! let mut expected_map = HashMap::new();
 //! expected_map.insert("x".to_string(), 1);
@@ -44,7 +44,7 @@
 //! or a custom datatype, using serde's `derive` mechanism:
 //!
 //! ```rust
-//! # fn main() -> serde_dhall::Result<()> {
+//! # fn main() -> sessiond_serde_dhall::Result<()> {
 //! use serde::Deserialize;
 //!
 //! #[derive(Deserialize)]
@@ -57,7 +57,7 @@
 //! let data = "{ x = 1, y = 1 + 1 } : { x: Natural, y: Natural }";
 //!
 //! // Convert the Dhall string to a Point.
-//! let point: Point = serde_dhall::from_str(data).parse()?;
+//! let point: Point = sessiond_serde_dhall::from_str(data).parse()?;
 //! assert_eq!(point.x, 1);
 //! assert_eq!(point.y, 2);
 //!
@@ -73,14 +73,14 @@
 //! This could mean a common Rust type like `HashMap`:
 //!
 //! ```rust
-//! # fn main() -> serde_dhall::Result<()> {
+//! # fn main() -> sessiond_serde_dhall::Result<()> {
 //! use std::collections::HashMap;
 //!
 //! let mut map = HashMap::new();
 //! map.insert("x".to_string(), 1u64);
 //! map.insert("y".to_string(), 2u64);
 //!
-//! let string = serde_dhall::serialize(&map).to_string()?;
+//! let string = sessiond_serde_dhall::serialize(&map).to_string()?;
 //! assert_eq!(
 //!     string,
 //!     "{ x = 1, y = 2 }".to_string(),
@@ -92,7 +92,7 @@
 //! or a custom datatype, using serde's `derive` mechanism:
 //!
 //! ```rust
-//! # fn main() -> serde_dhall::Result<()> {
+//! # fn main() -> sessiond_serde_dhall::Result<()> {
 //! use serde::Serialize;
 //!
 //! #[derive(Serialize)]
@@ -102,7 +102,7 @@
 //! }
 //!
 //! let data = Point { x: 1, y: 2 };
-//! let string = serde_dhall::serialize(&data).to_string()?;
+//! let string = sessiond_serde_dhall::serialize(&data).to_string()?;
 //! assert_eq!(
 //!     string,
 //!     "{ x = 1, y = 2 }".to_string(),
@@ -117,9 +117,9 @@
 //! # Replacing `serde_json` or `serde_yaml`
 //!
 //! If you used to consume JSON or YAML, you only need to replace [`serde_json::from_str`] or
-//! [`serde_yaml::from_str`] with [`serde_dhall::from_str(…).parse()`](from_str()).
+//! [`serde_yaml::from_str`] with [`sessiond_serde_dhall::from_str(…).parse()`](from_str()).
 //! If you used to produce JSON or YAML, you only need to replace [`serde_json::to_string`] or
-//! [`serde_yaml::to_string`] with [`serde_dhall::serialize(…).to_string()`](serialize()).
+//! [`serde_yaml::to_string`] with [`sessiond_serde_dhall::serialize(…).to_string()`](serialize()).
 //!
 //! [`serde_json::from_str`]: https://docs.serde.rs/serde_json/fn.from_str.html
 //! [`serde_yaml::from_str`]: https://docs.serde.rs/serde_yaml/fn.from_str.html
@@ -147,9 +147,9 @@
 //! trait.
 //!
 //! ```rust
-//! # fn main() -> serde_dhall::Result<()> {
+//! # fn main() -> sessiond_serde_dhall::Result<()> {
 //! use serde::Deserialize;
-//! use serde_dhall::StaticType;
+//! use sessiond_serde_dhall::StaticType;
 //!
 //! #[derive(Deserialize, StaticType)]
 //! struct Point {
@@ -161,7 +161,7 @@
 //! let data = "{ x = 1, y = 1 + 1 }";
 //!
 //! // Convert the Dhall string to a Point.
-//! let point = serde_dhall::from_str(data)
+//! let point = sessiond_serde_dhall::from_str(data)
 //!     .static_type_annotation()
 //!     .parse::<Point>()?;
 //! assert_eq!(point.x, 1);
@@ -170,7 +170,7 @@
 //! // Invalid data fails the type validation
 //! let invalid_data = "{ x = 1, z = 0.3 }";
 //! assert!(
-//!     serde_dhall::from_str(invalid_data)
+//!     sessiond_serde_dhall::from_str(invalid_data)
 //!         .static_type_annotation()
 //!         .parse::<Point>()
 //!         .is_err()
@@ -180,9 +180,9 @@
 //! ```
 //!
 //! ```
-//! # fn main() -> serde_dhall::Result<()> {
+//! # fn main() -> sessiond_serde_dhall::Result<()> {
 //! use serde::Serialize;
-//! use serde_dhall::{serialize, StaticType};
+//! use sessiond_serde_dhall::{serialize, StaticType};
 //!
 //! #[derive(Serialize, StaticType)]
 //! enum MyOption {
@@ -205,20 +205,20 @@
 //! text like you would parse any other value.
 //!
 //! ```rust
-//! # fn main() -> serde_dhall::Result<()> {
-//! use serde_dhall::SimpleType;
+//! # fn main() -> sessiond_serde_dhall::Result<()> {
+//! use sessiond_serde_dhall::SimpleType;
 //! use std::collections::HashMap;
 //!
 //! // Parse a Dhall type
 //! let point_type_str = "{ x: Natural, y: Natural }";
-//! let point_type = serde_dhall::from_str(point_type_str).parse::<SimpleType>()?;
+//! let point_type = sessiond_serde_dhall::from_str(point_type_str).parse::<SimpleType>()?;
 //!
 //! // Some Dhall data
 //! let point_data = "{ x = 1, y = 1 + 1 }";
 //!
 //! // Deserialize the data to a Rust type. This checks that
 //! // the data matches the provided type.
-//! let deserialized_map = serde_dhall::from_str(point_data)
+//! let deserialized_map = sessiond_serde_dhall::from_str(point_data)
 //!     .type_annotation(&point_type)
 //!     .parse::<HashMap<String, u64>>()?;
 //!
@@ -232,8 +232,8 @@
 //! ```
 //!
 //! ```
-//! # fn main() -> serde_dhall::Result<()> {
-//! use serde_dhall::{serialize, from_str, SimpleValue};
+//! # fn main() -> sessiond_serde_dhall::Result<()> {
+//! use sessiond_serde_dhall::{serialize, from_str, SimpleValue};
 //!
 //! let ty = from_str("< A | B: Bool >").parse()?;
 //! let data = SimpleValue::Union("A".to_string(), None);
@@ -252,9 +252,9 @@
 //! Rust with [`Function::apply()`], as many times as you like.
 //!
 //! ```rust
-//! # fn main() -> serde_dhall::Result<()> {
+//! # fn main() -> sessiond_serde_dhall::Result<()> {
 //! use serde::Deserialize;
-//! use serde_dhall::Function;
+//! use sessiond_serde_dhall::Function;
 //!
 //! #[derive(Deserialize)]
 //! struct Config {
@@ -268,11 +268,11 @@
 //!     }
 //! "#;
 //!
-//! let config: Config = serde_dhall::from_str(data).parse()?;
+//! let config: Config = sessiond_serde_dhall::from_str(data).parse()?;
 //!
 //! let names: Vec<String> = (0..config.replicas)
 //!     .map(|i| config.container_name.apply(i))
-//!     .collect::<serde_dhall::Result<_>>()?;
+//!     .collect::<sessiond_serde_dhall::Result<_>>()?;
 //!
 //! assert_eq!(names, vec!["worker-0", "worker-1", "worker-2"]);
 //! # Ok(())
@@ -312,7 +312,7 @@ mod static_type;
 mod value;
 
 #[doc(hidden)]
-pub use dhall_proc_macros::StaticType;
+pub use sessiond_dhall_proc_macros::StaticType;
 
 pub use deserialize::{from_simple_value, FromDhall};
 pub(crate) use error::ErrorKind;
