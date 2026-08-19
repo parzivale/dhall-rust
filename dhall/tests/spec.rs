@@ -92,7 +92,7 @@ impl TestFile {
         match self {
             TestFile::Source(path)
             | TestFile::Binary(path)
-            | TestFile::UI(path) => PathBuf::from("dhall").join(path),
+            | TestFile::UI(path) => PathBuf::from(path),
         }
     }
 
@@ -377,8 +377,10 @@ fn dhall_files_in_dir<'a>(
 // Whether to overwrite the output files when our own output differs. This is set once in `main()`.
 static UPDATE_TEST_FILES: AtomicBool = AtomicBool::new(false);
 
-static LOCAL_TEST_PATH: &str = "tests/";
-static TEST_PATHS: &[&str] = &["../dhall-lang/tests/", LOCAL_TEST_PATH];
+/// Both are relative to the staging root, which is the current directory for
+/// the whole run -- see `stage_test_root`.
+static LOCAL_TEST_PATH: &str = "dhall/tests/";
+static TEST_PATHS: &[&str] = &["dhall-lang/tests/", LOCAL_TEST_PATH];
 
 static FEATURES: &'static [TestFeature] = &[
     TestFeature {
@@ -736,10 +738,13 @@ fn make_writable(dir: &Path) {
 /// suite be materialised inside the repository, stage a root in a temp
 /// directory containing the two entries the paths resolve through:
 ///
-///   <staging>/dhall       -> the crate directory (`TestFile::path` prefixes
-///                            every path with `dhall`, and the local tests and
-///                            expected UI output live under `dhall/tests`)
+///   <staging>/dhall       -> the crate directory, holding the local tests and
+///                            the expected UI output
 ///   <staging>/dhall-lang  -> the dhall-lang standard suite
+///
+/// Every path the harness handles is relative to this root, and it is the
+/// current directory for the whole run, so there is one frame of reference
+/// rather than one for discovery and another for execution.
 ///
 /// `DHALL_LANG_DIR` picks the suite up from wherever it's pinned (the nix flake
 /// points it at the store); it falls back to a `dhall-lang` checkout beside the
@@ -760,16 +765,8 @@ fn stage_test_root(crate_dir: &Path, staging: &Path) -> PathBuf {
         dhall_lang_dir.display(),
     );
 
-    // `<staging>/dhall` must be a real directory rather than a symlink to the
-    // crate. The kernel resolves `..` physically, so `../dhall-lang` from a
-    // symlinked `dhall` would escape the staging root and resolve beside the
-    // crate instead -- silently picking up a stray checkout over the pin.
-    create_dir_all(staging.join("dhall")).unwrap();
-    symlink_dir(
-        &crate_dir.join("tests"),
-        &staging.join("dhall").join("tests"),
-    )
-    .unwrap();
+    create_dir_all(staging).unwrap();
+    symlink_dir(crate_dir, &staging.join("dhall")).unwrap();
     symlink_dir(&dhall_lang_dir, &staging.join("dhall-lang")).unwrap();
 
     staging.join("dhall-lang")
@@ -783,19 +780,16 @@ fn main() {
         env::temp_dir().join(format!("dhall-tests-{}", random_id));
     let dhall_lang_dir = stage_test_root(&crate_dir, &staging_dir);
 
-    // Test discovery walks `TEST_PATHS`, which are relative to the crate
-    // directory; running them resolves paths from the staging root one level up
-    // (see `TestFile::path`). Both have to happen from the staged tree so that
-    // `as Location` output canonicalises to `./dhall-lang/...`.
-    env::set_current_dir(staging_dir.join("dhall")).unwrap();
+    // Everything -- discovery, reading, and the `as Location` output the
+    // fixtures assert on -- is relative to the staging root, so this is the
+    // current directory for the rest of the run.
+    env::set_current_dir(&staging_dir).unwrap();
 
     let tests = FEATURES
         .iter()
         .copied()
         .flat_map(discover_tests_for_feature)
         .collect();
-
-    env::set_current_dir(&staging_dir).unwrap();
 
     // Set environment variable for import tests.
     env::set_var("DHALL_TEST_VAR", "6 * 7");
