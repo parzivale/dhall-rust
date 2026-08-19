@@ -30,12 +30,15 @@ jobs:
         run: |
           cp -rL result coverage-report
           chmod -R u+w coverage-report
+      # No token: uploading tokenless, which codecov allows for public
+      # repositories. It is rate-limited, so this does not fail the run on an
+      # upload error -- a coverage upload failing is not a signal about the
+      # code. The action still reports the failure in this step's log.
       - name: Upload to codecov
         uses: codecov/codecov-action@v5
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage-report/lcov.info
-          fail_ci_if_error: true
+          fail_ci_if_error: false
       - name: Upload report
         uses: actions/upload-artifact@v4
         with:
