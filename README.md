@@ -9,13 +9,13 @@
 [cratesio-badge]: https://img.shields.io/crates/v/serde_dhall.svg?style=flat-square
 [docs-badge]: https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square
 [ci-badge]: https://img.shields.io/github/workflow/status/Nadrieril/dhall-rust/Test%20suite?style=flat-square
-[codecov-badge]: https://img.shields.io/codecov/c/github/Nadrieril/dhall-rust?style=flat-square
+[codecov-badge]: https://img.shields.io/codecov/c/github/parzivale/dhall-rust?style=flat-square
 [depsrs-badge]: https://deps.rs/repo/github/nadrieril/dhall-rust/status.svg
 
 [cratesio-url]: https://crates.io/crates/serde_dhall
 [docs-url]: https://docs.rs/serde_dhall
 [ci-url]: https://github.com/Nadrieril/dhall-rust/actions
-[codecov-url]: https://codecov.io/gh/Nadrieril/dhall-rust
+[codecov-url]: https://codecov.io/gh/parzivale/dhall-rust
 [depsrs-url]: https://deps.rs/repo/github/nadrieril/dhall-rust
 
 Dhall is a programmable configuration language optimized for
@@ -88,9 +88,12 @@ is pinned by the flake. It passes the whole standard test suite bar two cases:
 * `import/success/unit/asLocation/RemoteCanonicalize4`, where the standard
   disagrees with [RFC 3986 §5.2](https://tools.ietf.org/html/rfc3986#section-5.2)
   and this implementation follows the RFC.
-* `type-inference/success/prelude`, because imported values round-trip through
-  the normal-form representation, which does not retain binder names, so a type
-  inferred from an import comes back alpha-normalized.
+* `type-inference/success/prelude`, because an import served from the on-disk
+  cache comes back alpha-normalized, so a type is inferred with `_` binders
+  rather than the original names. The standard addresses cache entries by the
+  hash of their contents and that hash is over the alpha-normalized form, so
+  storing anything else would break interoperability with other implementations
+  sharing the cache. The values are alpha-equivalent.
 
 See
 [here](https://github.com/Nadrieril/dhall-rust/issues?q=is%3Aopen+is%3Aissue+label%3Astandard-compliance)

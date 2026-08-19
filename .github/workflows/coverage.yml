@@ -23,10 +23,23 @@ jobs:
         run: nix build .#coverage --print-build-logs
       - name: Summarise
         run: cat result/summary.txt >> "$GITHUB_STEP_SUMMARY"
+      # `result` is a symlink into the nix store, which the actions will not
+      # follow; copy the report out first. The copy inherits the store's
+      # read-only bits, hence the chmod.
+      - name: Stage the report
+        run: |
+          cp -rL result coverage-report
+          chmod -R u+w coverage-report
+      - name: Upload to codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-report/lcov.info
+          fail_ci_if_error: true
       - name: Upload report
         uses: actions/upload-artifact@v4
         with:
           name: coverage
           path: |
-            result/lcov.info
-            result/html
+            coverage-report/lcov.info
+            coverage-report/html
