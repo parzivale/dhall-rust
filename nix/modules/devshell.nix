@@ -13,8 +13,14 @@ pkgs.mkShell {
 
     openssl
 
-    # serde_dhall has a wasm test target.
+    # serde_dhall has a wasm test target. wasm32-unknown-unknown links with
+    # lld, and `wasm-pack test --node` needs a node to run the result in.
     wasm-pack
+    lld
+    nodejs
+
+    # `cargo audit` for the security workflow; also handy locally.
+    cargo-audit
 
     # `nix run .#update-tests` brings its own dhall and fd, but they are handy
     # to have directly. cbor2diag.rb is not in nixpkgs -- if you need to

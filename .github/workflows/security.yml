@@ -1,4 +1,5 @@
 name: Security audit
+
 on:
   schedule:
     - cron: '0 0 * * *'
@@ -6,11 +7,23 @@ on:
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
+
 jobs:
+  # Was actions-rs/audit-check, which is archived and no longer runs. This uses
+  # cargo-audit from the devshell instead, so the tool is pinned by the flake
+  # like everything else. It needs network to fetch the advisory database, so it
+  # is a workflow step rather than a flake check.
   security_audit:
+    name: cargo audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/audit-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout branch
+        uses: actions/checkout@v4
+      - name: Install nix
+        uses: cachix/install-nix-action@v27
+      # Fails on vulnerabilities. Advisories that are only warnings are printed
+      # but do not fail the run: the one currently outstanding is `ansi_term`
+      # being unmaintained, reached through colored-diff, which is a
+      # dev-dependency used to pretty-print test diffs.
+      - name: Audit dependencies
+        run: nix develop --command cargo audit
