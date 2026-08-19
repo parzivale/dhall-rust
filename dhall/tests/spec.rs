@@ -573,11 +573,19 @@ fn ignore_test(variant: SpecTestKind, path: &str) -> bool {
 
     // Failing for now, we should fix that.
     let is_failing_for_now = false
-        // Imported values round-trip through `Nir`, which does not retain
-        // binder names (see the "manage to keep the Nir around" TODO in
-        // resolve.rs), so a type inferred from an import comes back
-        // alpha-normalized: `Type -> Optional _ -> Bool` rather than
-        // `forall(a : Type) -> forall(xs : Optional a) -> Bool`.
+        // An import served from the on-disk cache comes back
+        // alpha-normalized, so this infers `List Bool -> Bool` where the
+        // expected output says `forall(xs : List Bool) -> Bool`. With an empty
+        // cache it matches; the Prelude imports the same hashed file more than
+        // once, so the second occurrence is a cache hit even in a single run.
+        //
+        // Not a bug in this implementation, and not fixable without breaking
+        // interoperability: the standard addresses cache entries by the hash of
+        // their contents, and that hash is over the *alpha-normalized* form, so
+        // a cache file has to store that form to verify against its own name.
+        // dhall-haskell shares ~/.cache/dhall with us, so storing anything else
+        // would corrupt the cache for it. The values are alpha-equivalent; only
+        // the binder names a type is printed with differ.
         || path == "type-inference/success/prelude";
 
     (cfg!(debug_assertions) && is_too_slow)
