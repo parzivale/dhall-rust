@@ -2,10 +2,76 @@
 
 #### [Unreleased]
 
+##### Read this before upgrading
+
+- BREAKING CHANGE: **semantic hashes have changed for some expressions.** `l ++ r`
+  was not normalized when neither side was a text literal, so it stayed a `++`
+  node instead of becoming `"${l}${r}"`. Any `sha256:` you recorded for an
+  expression containing a `Text` concatenation of two non-literals no longer
+  matches, and the import will be rejected. The hashes this produces now agree
+  with the other implementations; the ones it produced before did not
+- BREAKING CHANGE: `Natural` and `Integer` are arbitrary-precision, so
+  `dhall::syntax::{Natural, Integer}` are `num_bigint::{BigUint, BigInt}` rather
+  than `u64` and `i64`. `serde_dhall` widens to `u128`/`i128` where needed and
+  refuses a value that fits neither, instead of truncating
+- BREAKING CHANGE: a `Prelude.Map.Type` no longer deserializes into a `HashMap`.
+  It is a `List { mapKey : k, mapValue : v }` in Dhall and now deserializes as
+  one. Collapsing it dropped repeated keys, discarded the ordering, made the
+  result indistinguishable from a plain record, and panicked on a non-`Text`
+  key. The `SimpleType` docs show the one-line conversion
+- BREAKING CHANGE: `?` no longer recovers from every failure. Per the standard
+  it recovers only when an import could not be *retrieved*; a cyclic import, a
+  failed integrity check, and an import that was fetched but does not parse or
+  typecheck now propagate
+- BREAKING CHANGE: `dhall::error::AnnotationType` is this crate's own enum
+  rather than a re-export from `annotate-snippets`, so bumping that dependency
+  is no longer a breaking change here
+- Error messages have changed. `annotate-snippets` 0.12 reports more accurate
+  line numbers and uses rustc's multi-span layout, and import failures have real
+  messages in place of `Debug` output
+
+##### Added
+
 - Deserialize Dhall functions into the new `serde_dhall::Function` type, and call them from Rust
   with `Function::apply()`. Functions serialize back to Dhall as well
 - BREAKING CHANGE: Add a `Function` variant to `SimpleValue` and a `Function` variant to
   `SimpleType`, so that `T -> U` is now a representable type
+- `Deserializer::remote_imports()` refuses imports that would reach the network
+  while local ones keep resolving, which `imports(false)` could not express. The
+  check is on where the request would go, so a relative import inside an
+  already-remote file is refused too
+- CORS checking for transitive remote imports, per `standard/imports.md`.
+  Remote-to-remote imports were rejected outright; they are now allowed when the
+  response grants the parent origin access
+- Custom import headers. `using [ ... ]` clauses are sent with the request, and
+  forwarded to relative imports on the same host but not to absolute ones.
+  Headers are typechecked in an empty context, so one referring to a surrounding
+  binding is an unbound variable rather than a way to leak program state
+- `Parsed::resolve_without_remote_imports` and `Resolved::normalize_untyped`
+
+##### Fixed
+
+- `Natural` arithmetic silently produced wrong answers. `18446744073709551615 + 1`
+  evaluated to `0` in release builds and panicked in debug
+- Arbitrary-precision support means bignum literals and CBOR bignum tags (RFC
+  8949 tags 2 and 3) now work, and `Integer/toDouble` handles values beyond
+  `i64`
+- A `merge` whose handler's return type depends on its argument panicked with
+  "Trying to use a fresh variable outside of equality checking" instead of
+  reporting the error
+- `Sort` and expressions with free variables can be normalized. The standard
+  defines normalization over untyped terms; this typechecked first
+- Alpha-normalization renames free variables' indices correctly:
+  `\(x : Bool) -> \(x : Bool) -> x@2` printed `x@2` rather than `x`
+
+##### Changed
+
+- The build and test setup is a nix flake. `nix flake check` builds, formats and
+  runs the whole suite in the sandbox with no network; `nix build .#coverage`
+  measures coverage. `dhall-lang` is a flake input rather than a git submodule
+- All dependencies updated, including nine major versions
+- The test harness fails on a missing expected-output file rather than writing
+  one from its own output and passing
 
 #### [0.13.0] - 2025-09-10
 
