@@ -562,6 +562,21 @@ fn fetch_import<'cx>(
 
     let location = cx[import_id].base_location.chain(import, headers)?;
 
+    // Checked after chaining, because a relative import inside a remote file
+    // chains to a remote location: what matters is where the request would
+    // actually go, not how the import was written.
+    if !env.allow_remote()
+        && matches!(location.kind, ImportLocationKind::Remote(..))
+    {
+        return Err(ImportError::RemoteImportsDisabled {
+            location: match &location.kind {
+                ImportLocationKind::Remote(url) => url.to_string(),
+                _ => unreachable!("checked to be remote just above"),
+            },
+        }
+        .into());
+    }
+
     // If the hash is in the on-disk cache, return
     // the cached contents.
     if let Some(typed) = env.get_from_disk_cache(&import.hash) {
@@ -765,6 +780,20 @@ pub fn resolve<'cx>(
     parsed: Parsed,
 ) -> Result<Resolved<'cx>, Error> {
     parsed.resolve_with_env(&mut ImportEnv::new(cx))
+}
+
+/// Resolves imports, but refuses to fetch any remote one.
+///
+/// Local imports read files the caller could have read anyway; a remote import
+/// fetches and runs code from a third party. This allows the first without the
+/// second, which is what you want for configuration you did not write. Note the
+/// check is on where a request would actually go, so a relative import inside
+/// an already-remote file is refused too.
+pub fn resolve_without_remote_imports<'cx>(
+    cx: Ctxt<'cx>,
+    parsed: Parsed,
+) -> Result<Resolved<'cx>, Error> {
+    parsed.resolve_with_env(&mut ImportEnv::new(cx).without_remote_imports())
 }
 
 /// Resolves names, and errors if we find any imports.

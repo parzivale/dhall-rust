@@ -343,6 +343,40 @@ mod serde {
     }
 
     #[test]
+    fn test_remote_imports_can_be_refused_while_local_still_work() {
+        // No network involved: a refused remote import is rejected before any
+        // request goes out.
+        let err = serde_dhall::from_str("https://example.com/config.dhall")
+            .remote_imports(false)
+            .parse::<u64>()
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("remote imports are disabled")
+                && err.contains("https://example.com/config.dhall"),
+            "expected the error to name the refused import, got: {}",
+            err
+        );
+
+        // A local import is still resolved.
+        assert_eq!(
+            serde_dhall::from_str(&dhall_lang_file(
+                "tests/parser/success/unit/BoolLitTrueA.dhall"
+            ))
+            .remote_imports(false)
+            .parse::<bool>()
+            .map_err(|e| e.to_string()),
+            Ok(true)
+        );
+
+        // `imports(false)` still refuses everything, remote included.
+        assert!(serde_dhall::from_str("https://example.com/config.dhall")
+            .imports(false)
+            .parse::<u64>()
+            .is_err());
+    }
+
+    #[test]
     #[ignore] // Way too slow
     fn test_prelude() {
         assert_eq!(

@@ -19,6 +19,12 @@ pub struct ImportEnv<'cx> {
     disk_cache: Option<Cache>, // `None` if it failed to initialize
     mem_cache: HashMap<ImportLocation, ImportResultId<'cx>>,
     stack: CyclesStack,
+    /// Whether imports may reach the network.
+    ///
+    /// Local imports read files the caller could have read anyway; a remote one
+    /// fetches code from a third party. Callers handling untrusted input often
+    /// want the first without the second.
+    allow_remote: bool,
 }
 
 impl NameEnv {
@@ -76,7 +82,18 @@ impl<'cx> ImportEnv<'cx> {
             disk_cache: Cache::new().ok(),
             mem_cache: Default::default(),
             stack: Default::default(),
+            allow_remote: true,
         }
+    }
+
+    /// Refuse to fetch any remote import. See [`ImportEnv::allow_remote`].
+    pub fn without_remote_imports(mut self) -> Self {
+        self.allow_remote = false;
+        self
+    }
+
+    pub fn allow_remote(&self) -> bool {
+        self.allow_remote
     }
 
     pub fn cx(&self) -> Ctxt<'cx> {

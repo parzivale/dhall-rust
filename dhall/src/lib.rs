@@ -88,6 +88,17 @@ impl Parsed {
     pub fn resolve<'cx>(self, cx: Ctxt<'cx>) -> Result<Resolved<'cx>, Error> {
         resolve::resolve(cx, self)
     }
+    /// Resolve imports, but refuse to fetch any remote one.
+    ///
+    /// Local imports read files the caller could have read anyway; a remote
+    /// import fetches and runs code from a third party. Use this for
+    /// configuration you did not write.
+    pub fn resolve_without_remote_imports<'cx>(
+        self,
+        cx: Ctxt<'cx>,
+    ) -> Result<Resolved<'cx>, Error> {
+        resolve::resolve_without_remote_imports(cx, self)
+    }
     pub fn skip_resolve<'cx>(
         self,
         cx: Ctxt<'cx>,

@@ -42,6 +42,10 @@ pub enum ImportError {
         parent: String,
         child: String,
     },
+    /// A remote import was reached while remote imports were disabled.
+    RemoteImportsDisabled {
+        location: String,
+    },
     UnexpectedImport(Import<()>),
     ImportCycle(CyclesStack, ImportLocation),
     Url(url::ParseError),
@@ -156,6 +160,11 @@ impl std::fmt::Display for Error {
                      Access-Control-Allow-Origin",
                     child, parent
                 )
+            }
+            ErrorKind::Resolve(ImportError::RemoteImportsDisabled {
+                location,
+            }) => {
+                write!(f, "remote imports are disabled: {}", location)
             }
             ErrorKind::Resolve(err) => write!(f, "{:?}", err),
             ErrorKind::Typecheck(err) => write!(f, "{}", err),

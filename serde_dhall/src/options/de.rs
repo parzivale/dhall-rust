@@ -60,8 +60,8 @@ pub struct Deserializer<'a, A> {
     source: Source<'a>,
     annot: A,
     allow_imports: bool,
+    allow_remote_imports: bool,
     builtins: HashMap<dhall::syntax::Label, dhall::syntax::Expr>,
-    // allow_remote_imports: bool,
     // use_cache: bool,
 }
 
@@ -71,8 +71,8 @@ impl<'a> Deserializer<'a, NoAnnot> {
             source,
             annot: NoAnnot,
             allow_imports: true,
+            allow_remote_imports: true,
             builtins: HashMap::new(),
-            // allow_remote_imports: true,
             // use_cache: true,
         }
     }
@@ -138,6 +138,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
             annot: ManualAnnot(ty),
             source: self.source,
             allow_imports: self.allow_imports,
+            allow_remote_imports: self.allow_remote_imports,
             builtins: self.builtins,
         }
     }
@@ -189,6 +190,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
             annot: StaticAnnot,
             source: self.source,
             allow_imports: self.allow_imports,
+            allow_remote_imports: self.allow_remote_imports,
             builtins: self.builtins,
         }
     }
@@ -223,14 +225,40 @@ impl<'a, A> Deserializer<'a, A> {
         }
     }
 
-    // /// TODO
-    // pub fn remote_imports(&mut self, imports: bool) -> &mut Self {
-    //     self.allow_remote_imports = imports;
-    //     if imports {
-    //         self.allow_imports = true;
-    //     }
-    //     self
-    // }
+    /// Controls whether imports may reach the network. Defaults to `true`.
+    ///
+    /// A local import reads a file the caller could have read anyway; a remote
+    /// import fetches and evaluates code from a third party. When parsing
+    /// configuration you did not write, you usually want local imports to keep
+    /// working while remote ones are refused.
+    ///
+    /// The check is on where the request would actually go, so a relative
+    /// import inside an already-remote file is refused too.
+    ///
+    /// Passing `true` also re-enables imports generally, since a remote import
+    /// cannot be resolved with imports switched off entirely.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # fn main() -> serde_dhall::Result<()> {
+    /// let data = "12 + https://example.com/other_file.dhall : Natural";
+    /// assert!(
+    ///     serde_dhall::from_str(data)
+    ///         .remote_imports(false)
+    ///         .parse::<u64>()
+    ///         .is_err()
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn remote_imports(self, imports: bool) -> Self {
+        Deserializer {
+            allow_remote_imports: imports,
+            allow_imports: self.allow_imports || imports,
+            ..self
+        }
+    }
 
     /// Makes a set of types available to the parsed dhall code. This is similar to how builtins
     /// like `Natural` work: they are provided by dhall and accessible in any file.
@@ -337,11 +365,13 @@ impl<'a, A> Deserializer<'a, A> {
                     acc.add_let_binding(name.clone(), subst.clone())
                 });
 
-            let resolved = if self.allow_imports {
-                parsed_with_builtins.resolve(cx)?
-            } else {
-                parsed_with_builtins.skip_resolve(cx)?
-            };
+            let resolved =
+                match (self.allow_imports, self.allow_remote_imports) {
+                    (false, _) => parsed_with_builtins.skip_resolve(cx)?,
+                    (true, true) => parsed_with_builtins.resolve(cx)?,
+                    (true, false) => parsed_with_builtins
+                        .resolve_without_remote_imports(cx)?,
+                };
             let typed = match &T::get_annot(self.annot) {
                 None => resolved.typecheck(cx)?,
                 Some(ty) => resolved.typecheck_with(cx, &ty.to_hir())?,
