@@ -9,10 +9,13 @@ use crate::builtins::Builtin;
 use crate::error::ErrorBuilder;
 use crate::error::{Error, ImportError};
 use crate::operations::{BinOp, OpKind};
-use crate::semantics::{mkerr, Hir, HirKind, ImportEnv, NameEnv, Type};
+use crate::semantics::{
+    mkerr, Hir, HirKind, ImportEnv, NameEnv, Nir, NirKind, Type,
+};
 use crate::syntax;
 use crate::syntax::{
-    Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget, Span,
+    Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget, Label,
+    Span,
     UnspannedExpr, URL,
 };
 use crate::{
@@ -43,6 +46,13 @@ enum ImportLocationKind {
 pub struct ImportLocation {
     kind: ImportLocationKind,
     mode: ImportMode,
+    /// Custom headers to send, from a `using` clause. May have been inherited
+    /// from the parent import; see `chain`.
+    ///
+    /// Part of the identity of a location because the response can depend on
+    /// them, so two otherwise-identical imports with different headers must not
+    /// share a cache entry.
+    headers: Vec<(String, String)>,
 }
 
 impl ImportLocationKind {
@@ -110,15 +120,20 @@ impl ImportLocationKind {
         })
     }
 
-    fn fetch_dhall(&self, parent: &ImportLocationKind) -> Result<Parsed, Error> {
+    fn fetch_dhall(
+        &self,
+        parent: &ImportLocationKind,
+        headers: &[(String, String)],
+    ) -> Result<Parsed, Error> {
         Ok(match self {
             ImportLocationKind::Local(path) => Parsed::parse_file(path)?,
             ImportLocationKind::Remote(url) => {
-                let response = download_http(url.clone())?;
+                let response = download_http(url.clone(), headers)?;
                 check_cors(parent, url, &response)?;
                 crate::semantics::parse::parse_remote_body(
                     url.clone(),
                     &response.body,
+                    headers.to_vec(),
                 )?
             }
             ImportLocationKind::Env(var_name) => {
@@ -138,6 +153,7 @@ impl ImportLocationKind {
     fn fetch_text(
         &self,
         parent: &ImportLocationKind,
+        headers: &[(String, String)],
     ) -> Result<String, Error> {
         Ok(match self {
             ImportLocationKind::Local(path) => {
@@ -145,7 +161,7 @@ impl ImportLocationKind {
                 std::fs::read_to_string(path)?
             }
             ImportLocationKind::Remote(url) => {
-                let response = download_http(url.clone())?;
+                let response = download_http(url.clone(), headers)?;
                 check_cors(parent, url, &response)?;
                 response.body
             }
@@ -193,24 +209,40 @@ impl ImportLocation {
         ImportLocation {
             kind: ImportLocationKind::Missing,
             mode: ImportMode::Code,
+            headers: Vec::new(),
         }
     }
     pub fn dhall_code_without_imports() -> Self {
         ImportLocation {
             kind: ImportLocationKind::NoImport,
             mode: ImportMode::Code,
+            headers: Vec::new(),
         }
     }
     pub fn local_dhall_code(path: PathBuf) -> Self {
         ImportLocation {
             kind: ImportLocationKind::Local(path),
             mode: ImportMode::Code,
+            headers: Vec::new(),
         }
     }
     pub fn remote_dhall_code(url: Url) -> Self {
+        Self::remote_dhall_code_using(url, Vec::new())
+    }
+    /// As [`remote_dhall_code`], carrying the headers the file was fetched
+    /// with.
+    ///
+    /// They have to survive onto the location of the *fetched* expression, or
+    /// its relative imports have no parent headers to inherit and forwarding
+    /// stops after one hop.
+    pub fn remote_dhall_code_using(
+        url: Url,
+        headers: Vec<(String, String)>,
+    ) -> Self {
         ImportLocation {
             kind: ImportLocationKind::Remote(url),
             mode: ImportMode::Code,
+            headers,
         }
     }
 
@@ -218,7 +250,11 @@ impl ImportLocation {
     /// location, or error if not allowed.
     /// `sanity_check` indicates whether to check if that location is allowed to be referenced,
     /// for example to prevent a remote file from reading an environment variable.
-    fn chain(&self, import: &Import) -> Result<ImportLocation, Error> {
+    fn chain(
+        &self,
+        import: &Import,
+        headers: Vec<(String, String)>,
+    ) -> Result<ImportLocation, Error> {
         // Makes no sense to chain an import if the current file is not a dhall file.
         assert!(matches!(self.mode, ImportMode::Code));
         if matches!(self.kind, ImportLocationKind::NoImport) {
@@ -251,9 +287,29 @@ impl ImportLocation {
             }
             ImportTarget::Missing => ImportLocationKind::Missing,
         };
+        // Header forwarding, per standard/imports.md. A `using` clause on the
+        // child always wins. Failing that, a *relative* child of a remote
+        // parent inherits the parent's headers -- it is the same server, so the
+        // credentials still apply. An absolute child does not, which is what
+        // stops a token for one host being handed to another.
+        let is_relative = matches!(
+            import.location,
+            ImportTarget::Local(FilePrefix::Here | FilePrefix::Parent, _)
+        );
+        let headers = if !headers.is_empty() {
+            headers
+        } else if is_relative
+            && matches!(self.kind, ImportLocationKind::Remote(..))
+        {
+            self.headers.clone()
+        } else {
+            Vec::new()
+        };
+
         Ok(ImportLocation {
             kind,
             mode: import.mode,
+            headers,
         })
     }
 
@@ -267,7 +323,7 @@ impl ImportLocation {
         let cx = env.cx();
         let typed = match self.mode {
             ImportMode::Code => {
-                let parsed = self.kind.fetch_dhall(parent)?;
+                let parsed = self.kind.fetch_dhall(parent, &self.headers)?;
                 let typed = parsed.resolve_with_env(env)?.typecheck(cx)?;
                 Typed {
                     // TODO: manage to keep the Nir around. Will need fixing variables.
@@ -276,7 +332,7 @@ impl ImportLocation {
                 }
             }
             ImportMode::RawText => {
-                let text = self.kind.fetch_text(parent)?;
+                let text = self.kind.fetch_text(parent, &self.headers)?;
                 Typed {
                     hir: Hir::new(
                         HirKind::Expr(ExprKind::TextLit(text.into())),
@@ -300,6 +356,37 @@ impl ImportLocation {
 
 fn mkexpr(kind: UnspannedExpr) -> Expr {
     Expr::new(kind, Span::Artificial)
+}
+
+/// Read a normalized `using` clause into the headers to send.
+///
+/// The standard accepts either field naming:
+/// `List { mapKey : Text, mapValue : Text }` or
+/// `List { header : Text, value : Text }`.
+fn headers_from_nir(nir: &Nir<'_>) -> Vec<(String, String)> {
+    let entries = match nir.kind() {
+        NirKind::NEListLit(entries) => entries,
+        // An empty list has nothing to send.
+        _ => return Vec::new(),
+    };
+    entries
+        .iter()
+        .filter_map(|entry| {
+            let fields = match entry.kind() {
+                NirKind::RecordLit(fields) => fields,
+                _ => return None,
+            };
+            let get = |names: [&str; 2]| {
+                names.iter().find_map(|name| {
+                    match fields.get(&Label::from(*name))?.kind() {
+                        NirKind::TextLit(t) => t.as_text(),
+                        _ => None,
+                    }
+                })
+            };
+            Some((get(["mapKey", "header"])?, get(["mapValue", "value"])?))
+        })
+        .collect()
 }
 
 /// The CORS judgment, `corsCompliant(parent, child, headers)` in
@@ -352,8 +439,15 @@ pub(crate) struct HttpResponse {
 
 // TODO: error handling
 #[cfg(all(not(target_arch = "wasm32"), feature = "reqwest"))]
-pub(crate) fn download_http(url: Url) -> Result<HttpResponse, Error> {
-    let response = reqwest::blocking::get(url).unwrap();
+pub(crate) fn download_http(
+    url: Url,
+    headers: &[(String, String)],
+) -> Result<HttpResponse, Error> {
+    let mut request = reqwest::blocking::Client::new().get(url);
+    for (name, value) in headers {
+        request = request.header(name.as_str(), value.as_str());
+    }
+    let response = request.send().unwrap();
     let allow_origin = response
         .headers()
         .get_all(reqwest::header::ACCESS_CONTROL_ALLOW_ORIGIN)
@@ -367,11 +461,17 @@ pub(crate) fn download_http(url: Url) -> Result<HttpResponse, Error> {
     })
 }
 #[cfg(all(not(target_arch = "wasm32"), not(feature = "reqwest")))]
-pub(crate) fn download_http(_url: Url) -> Result<HttpResponse, Error> {
+pub(crate) fn download_http(
+    _url: Url,
+    _headers: &[(String, String)],
+) -> Result<HttpResponse, Error> {
     panic!("Remote imports are disabled in this build of dhall-rust")
 }
 #[cfg(target_arch = "wasm32")]
-pub(crate) fn download_http(_url: Url) -> Result<HttpResponse, Error> {
+pub(crate) fn download_http(
+    _url: Url,
+    _headers: &[(String, String)],
+) -> Result<HttpResponse, Error> {
     panic!("Remote imports are not supported on wasm yet")
 }
 
@@ -450,16 +550,18 @@ fn fetch_import<'cx>(
     let import = &cx[import_id].import;
     let span = cx[import_id].span.clone();
 
-    // Typecheck the `using [ ... ]` clause before fetching anything. It was
-    // resolved in an empty context, so a header referring to a surrounding
-    // binding is an unbound variable and fails here.
-    // TODO: check it against `List { mapKey : Text, mapValue : Text }`, and
-    // actually send the headers.
-    if let Some(headers) = &cx[import_id].headers {
-        crate::semantics::typecheck(cx, headers)?;
-    }
+    // Resolve the `using [ ... ]` clause before fetching anything. It was
+    // traversed in an empty context, so a header referring to a surrounding
+    // binding is an unbound variable and fails to typecheck here.
+    let headers = match &cx[import_id].headers {
+        Some(headers) => {
+            let typed = crate::semantics::typecheck(cx, headers)?;
+            headers_from_nir(&typed.as_hir().eval_closed_expr(cx))
+        }
+        None => Vec::new(),
+    };
 
-    let location = cx[import_id].base_location.chain(import)?;
+    let location = cx[import_id].base_location.chain(import, headers)?;
 
     // If the hash is in the on-disk cache, return
     // the cached contents.

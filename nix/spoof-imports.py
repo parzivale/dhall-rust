@@ -47,11 +47,11 @@ could be served from that pin instead. They are not, deliberately: those URLs
 name a frozen revision, whereas the dhall-lang pin moves. Serving them from a
 moving pin would let an upstream edit silently change what a frozen URL returns.
 
-There is deliberately no CORS emulation. dhall-rust rejects every
-remote-to-remote import outright (`SanityCheck` in resolve.rs, where the CORS
-check is still a TODO) and issues a plain GET that never sees the headers, so
-response bodies are the only thing affecting outcomes. Implementing that TODO
-would mean revisiting this file.
+Responses carry Access-Control-Allow-Origin, because dhall-rust implements the
+`corsCompliant` judgment and reads that header off the ordinary GET. Two hosts
+also vary their response on the *request* headers -- httpbin.org echoing what it
+was sent, and test.dhall-lang.org's Prelude mirror requiring a `Test` header --
+which is the whole point of the custom-header tests.
 """
 
 import os
@@ -63,6 +63,8 @@ TEST_HOST = "test.dhall-lang.org"
 # Serves the Prelude at the repository root, so `/List/length` is
 # `Prelude/List/length` -- which exists alongside `length.dhall`.
 PRELUDE_HOST = "prelude.dhall-lang.org"
+# Echoes request headers back; used by the custom-header tests.
+HTTPBIN_HOST = "httpbin.org"
 
 DHALL_LANG_PREFIX = "/dhall-lang/dhall-lang/"
 DHALL_RUST_PREFIX = "/Nadrieril/dhall-rust/"
@@ -157,8 +159,36 @@ def _read_from_pin(rel_path: str) -> "str | None":
         return None
 
 
-def lookup(host: str, path: str) -> "tuple[int, str, dict]":
-    """Resolve a request to (status, body, extra response headers)."""
+def lookup(
+    host: str, path: str, request_headers: "dict | None" = None
+) -> "tuple[int, str, dict]":
+    """Resolve a request to (status, body, extra response headers).
+
+    `request_headers` matters only for the custom-header tests, which are the
+    ones that assert the client sent what it should.
+    """
+    request_headers = request_headers or {}
+
+    if host == HTTPBIN_HOST:
+        # Echoes back what it was sent. The exact shape is taken from the
+        # suite's own expected output, tests/import/success/customHeadersB.
+        if path == "/user-agent":
+            agent = request_headers.get("user-agent", "")
+            body = '{\n  "user-agent": "%s"\n}\n' % agent
+            return 200, body, {"Access-Control-Allow-Origin": "*"}
+        return 404, NOT_FOUND_BODY, {}
+
+    if host == TEST_HOST and path.startswith("/Bool/"):
+        # test.dhall-lang.org mirrors the Prelude but rejects any request
+        # without a `Test` header. headerForwarding depends on that: it sets
+        # the header on the package import, and the relative imports inside
+        # only resolve if the header was forwarded to them.
+        if "test" not in request_headers:
+            return 403, "missing Test header\n", {}
+        body = _read_from_pin("Prelude" + path)
+        if body is not None:
+            return 200, body, {"Access-Control-Allow-Origin": "*"}
+        return 404, NOT_FOUND_BODY, {}
     if host == GITHUB_HOST:
         # GitHub raw serves everything with an open CORS policy.
         headers = {"Access-Control-Allow-Origin": "*"}
@@ -220,7 +250,8 @@ def request(flow) -> None:
 
     host = flow.request.pretty_host
     path = flow.request.path
-    status, body, extra_headers = lookup(host, path)
+    request_headers = {k.lower(): v for k, v in flow.request.headers.items()}
+    status, body, extra_headers = lookup(host, path, request_headers)
 
     if status != 200 and (host, _canonicalize(path)) not in EXPECTED_404:
         _record_miss(host, path, status)
