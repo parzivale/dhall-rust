@@ -27,6 +27,12 @@
       packages = forAllSystems (pkgs: rec {
         default = dhall-rust;
         dhall-rust = packageFor pkgs;
+
+        # `nix build .#coverage` -> lcov.info, an html report, and a summary.
+        coverage = import ./nix/modules/coverage.nix {
+          inherit pkgs dhall-lang;
+          package = dhall-rust;
+        };
       });
 
       checks = forAllSystems (pkgs:

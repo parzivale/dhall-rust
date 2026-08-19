@@ -26,7 +26,17 @@ pkgs.mkShell {
 
     # `cargo audit` for the security workflow; also handy locally.
     cargo-audit
+
+    # `cargo llvm-cov` for the coverage workflow.
+    cargo-llvm-cov
   ];
+
+  # cargo-llvm-cov needs the matching llvm tools. Pointed at directly rather
+  # than put on PATH: llvmPackages.bintools also carries a linker, which would
+  # shadow the one the normal build uses.
+  LLVM_COV = "${pkgs.llvmPackages.bintools-unwrapped}/bin/llvm-cov";
+  LLVM_PROFDATA =
+    "${pkgs.llvmPackages.bintools-unwrapped}/bin/llvm-profdata";
 
   # The spec suite reads the standard tests from here. Pointing it at the pinned
   # input is what lets ./dhall-lang stay out of the working tree entirely -- see
