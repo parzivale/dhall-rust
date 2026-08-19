@@ -1,7 +1,6 @@
-# `dhall_proc_macros`
+# `sessiond-dhall-proc-macros`
 
-This is an internal crate used for [`serde_dhall`], you probably want to use
-that instead.
+This is an internal crate used for [`sessiond-serde-dhall`], you probably want
+to use that instead.
 
-[`serde_dhall`]: https://docs.rs/serde_dhall
-
+[`sessiond-serde-dhall`]: https://docs.rs/sessiond-serde-dhall
