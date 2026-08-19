@@ -147,10 +147,36 @@ pub enum SimpleValue {
 /// `{ _1: T, _2: U }`  | `(T, U)`, structs
 /// `{ x: T, y: T }`  | `HashMap<String, T>`, structs
 /// `< x: T \| y: U >`  | enums
-/// `Prelude.Map.Type Text T`  | `HashMap<String, T>`, structs
+/// `Prelude.Map.Type K V`  | `Vec<Entry>`, where `Entry` has `mapKey` and `mapValue`
 /// `T -> U`  | [`Function`]
 /// `Prelude.JSON.Type`  | unsupported
-/// `Prelude.Map.Type T U`  | unsupported
+///
+/// A `Prelude.Map.Type K V` is a `List { mapKey : K, mapValue : V }` in Dhall,
+/// and deserializes as one. It does *not* collapse into a `HashMap`: a Dhall
+/// map is ordered and may repeat a key, so folding it into a map would discard
+/// both, and would make it indistinguishable from a plain record. Convert
+/// explicitly if you want a `HashMap`:
+///
+/// ```rust
+/// # fn main() -> serde_dhall::Result<()> {
+/// use std::collections::HashMap;
+/// use serde::Deserialize;
+///
+/// #[derive(Deserialize)]
+/// struct Entry {
+///     mapKey: String,
+///     mapValue: u64,
+/// }
+///
+/// let entries: Vec<Entry> =
+///     serde_dhall::from_str("toMap { x = 1, y = 2 }").parse()?;
+/// let map: HashMap<String, u64> =
+///     entries.into_iter().map(|e| (e.mapKey, e.mapValue)).collect();
+///
+/// assert_eq!(map["x"], 1);
+/// # Ok(())
+/// # }
+/// ```
 ///
 /// # Examples
 ///
@@ -280,61 +306,19 @@ impl SimpleValue {
             NirKind::NEOptionalLit(x) => {
                 SimpleValue::Optional(Some(Box::new(Self::from_nir(cx, x)?)))
             }
-            NirKind::EmptyListLit(t) => {
-                // Detect and handle the special records that make assoc maps
-                if let NirKind::RecordType(kts) = t.kind() {
-                    if kts.len() == 2
-                        && kts.contains_key("mapKey")
-                        && kts.contains_key("mapValue")
-                    {
-                        return Ok(SimpleValue::Record(Default::default()));
-                    }
-                }
-                SimpleValue::List(vec![])
-            }
-            NirKind::NEListLit(xs) => {
-                // Detect and handle the special records that make assoc maps
-                if let NirKind::RecordLit(kvs) = xs[0].kind() {
-                    if kvs.len() == 2
-                        && kvs.contains_key("mapKey")
-                        && kvs.contains_key("mapValue")
-                    {
-                        let convert_entry = |x: &Nir<'cx>| match x.kind() {
-                            NirKind::RecordLit(kvs) => {
-                                let k = match kvs.get("mapKey").unwrap().kind()
-                                {
-                                    NirKind::TextLit(t)
-                                        if t.as_text().is_some() =>
-                                    {
-                                        t.as_text().unwrap()
-                                    }
-                                    // TODO
-                                    _ => panic!(
-                                        "Expected `mapKey` to be a text \
-                                         literal"
-                                    ),
-                                };
-                                let v = Self::from_nir(
-                                    cx,
-                                    kvs.get("mapValue").unwrap(),
-                                )?;
-                                Ok((k, v))
-                            }
-                            _ => unreachable!("Internal type error"),
-                        };
-                        return Ok(SimpleValue::Record(
-                            xs.iter()
-                                .map(convert_entry)
-                                .collect::<StdResult<_, _>>()?,
-                        ));
-                    }
-                }
-                SimpleValue::List(
-                    xs.iter()
-                        .map(|x| Self::from_nir(cx, x))
-                        .collect::<StdResult<_, _>>()?,
-                )
-            }
+            // Note a `Prelude.Map.Type k v` gets no special treatment: it is a
+            // `List { mapKey : k, mapValue : v }` in Dhall and stays one here.
+            // Collapsing it into a record used to be convenient -- it let a map
+            // deserialize straight into a `HashMap` -- but it silently dropped
+            // duplicate keys, discarded the ordering, made the result
+            // indistinguishable from a plain record, and panicked outright on a
+            // non-`Text` key.
+            NirKind::EmptyListLit(_) => SimpleValue::List(vec![]),
+            NirKind::NEListLit(xs) => SimpleValue::List(
+                xs.iter()
+                    .map(|x| Self::from_nir(cx, x))
+                    .collect::<StdResult<_, _>>()?,
+            ),
             NirKind::RecordLit(kvs) => SimpleValue::Record(
                 kvs.iter()
                     .map(|(k, v)| Ok((k.to_string(), Self::from_nir(cx, v)?)))

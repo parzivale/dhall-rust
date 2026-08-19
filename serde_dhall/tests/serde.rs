@@ -249,9 +249,17 @@ mod serde {
             parse::<HashMap<String, u64>>("{ x = 1, y = 2 }"),
             expected_map
         );
+        // A `Prelude.Map.Type` is a list of records and stays one, so it does
+        // not deserialize into a map. Doing so would drop repeated keys and the
+        // ordering, both of which a Dhall map can carry.
+        assert!(from_str("toMap { x = 1, y = 2 }")
+            .parse::<HashMap<String, u64>>()
+            .is_err());
         assert_eq!(
-            parse::<HashMap<String, u64>>("toMap { x = 1, y = 2 }"),
-            expected_map
+            parse::<Vec<(String, u64)>>(
+                "[ { _1 = \"x\", _2 = 1 }, { _1 = \"y\", _2 = 2 } ]"
+            ),
+            vec![("x".to_string(), 1), ("y".to_string(), 2)]
         );
 
         let mut expected_map = HashMap::new();
