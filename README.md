@@ -46,8 +46,9 @@ official tooling instead; instructions can be found
 
 ## Usage
 
-For now, the only supported way of integrating Dhall in your application is via
-the `serde_dhall` crate, and only parsing is supported.
+The supported way of integrating Dhall in your application is via the
+`serde_dhall` crate, which handles both reading Dhall into Rust values and
+writing Rust values back out as Dhall.
 
 Add this to your `Cargo.toml`:
 
@@ -74,16 +75,26 @@ expected_map.insert("y".to_string(), 2);
 assert_eq!(deserialized_map, expected_map);
 ```
 
-`dhall` requires Rust >= 1.76.0
+The nix devshell pins the Rust toolchain used to build and test this project.
+There is no separately verified minimum supported version; the `1.76.0` that
+used to be documented here was checked by a CI matrix that no longer exists.
 
 ## Standard-compliance
 
-This implementation currently supports most of the [Dhall
-standard](https://github.com/dhall-lang/dhall-lang) version `20.0.0`.
+This implementation is tested against the [Dhall
+standard](https://github.com/dhall-lang/dhall-lang) at version `v20.2.0`, which
+is pinned by the flake. It passes the whole standard test suite bar two cases:
 
-The main missing feature is import headers. See
+* `import/success/unit/asLocation/RemoteCanonicalize4`, where the standard
+  disagrees with [RFC 3986 §5.2](https://tools.ietf.org/html/rfc3986#section-5.2)
+  and this implementation follows the RFC.
+* `type-inference/success/prelude`, because imported values round-trip through
+  the normal-form representation, which does not retain binder names, so a type
+  inferred from an import comes back alpha-normalized.
+
+See
 [here](https://github.com/Nadrieril/dhall-rust/issues?q=is%3Aopen+is%3Aissue+label%3Astandard-compliance)
-for a list of the other missing features.
+for other known gaps.
 
 ## Contributing
 
@@ -100,73 +111,76 @@ $ git clone https://github.com/Nadrieril/dhall-rust.git
 But we also might note that it's better practice to fork the repository to your own workspace.
 There you can make changes and submit pull requests against this repository.
 
-After the repositry has been cloned we need to update the [git submodule](https://git-scm.com/book/en/v2/Git-Tools-Submodules)
-in the project, i.e. `dhall-lang`. We can do this by running:
-
-```bash
-$ git submodule update --init --recursive
-```
+There is nothing else to set up. `dhall-lang`, which supplies most of the test
+suite, used to be a git submodule and is now pinned by the flake; the test
+harness finds it through `$DHALL_LANG_DIR`, which the devshell sets.
 
 ### Building and Testing
 
-A preferred method among the Rust community for developing is to use [`rustup`](https://rustup.rs/).
+Everything goes through [nix](https://nixos.org/) with flakes enabled. The
+toolchain, `openssl`, and the pinned `dhall-lang` all come from the flake, so
+there is no `rustup` step.
 
-It can be installed by running:
+To build and run the whole test suite:
 
 ```bash
-$ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+$ nix flake check
 ```
 
-or if [nix](https://nixos.org/) is your tool of choice:
+This runs in the nix sandbox, with no network. The suite resolves remote
+imports, so those hosts are served locally by `nix/spoof-imports.py` -- see that
+file for what it serves and why. `nix flake check` is the authoritative signal:
+CI runs exactly this.
+
+For an interactive shell with the toolchain and `rust-analyzer` on `PATH`:
 
 ```bash
-$ nix-shell -p rustup
+$ nix develop
 ```
 
-Once `rustup` is installed we can get it to manage our toolchain by running:
+Inside it, `cargo build` and `cargo test` work as usual. Note that a couple of
+the import tests reach the live internet from there and fail, because the hosts
+they name have moved on from the pinned revision; they pass under `nix flake
+check`, which serves those requests locally.
+
+You can run tests individually by name:
 
 ```bash
-$ rustup toolchain install stable
+$ nix develop --command cargo test --test spec -- import_success::unit_SimpleRemote
 ```
 
-Then we can manage our building and testing with the [`cargo`](https://crates.io/) dependency manager:
+There is also a helper for regenerating expected outputs, which brings its own
+`dhall` and `fd`:
 
 ```bash
-$ cargo build
-```
-
-```bash
-$ cargo test -- -q
-```
-
-You can also run tests individually by their name:
-
-```bash
-$ cargo test tests::spec::name_of_test
+$ nix run .#update-tests -- missing
 ```
 
 Now we can have fun and happy contributing!
 
 ### Test suite
 
-The test suite uses tests from the dhall-lang submodule as well as from the
+The test suite uses tests from the pinned `dhall-lang` as well as from the
 local `dhall/tests` directory.
 The various tests are run according to the instructions present in
 [`dhall-lang/tests/README.md`](https://github.com/dhall-lang/dhall-lang/blob/master/tests/README.md).
 
-If an output test file (a `fooB.dhall` file) is missing, we will generate it automatically.
-This is useful when writing new tests. Don't forget to commit it to git !
-
-If one of the specification tests fails but you prefer the new output, you can
-run the test(s) with `--bless` to overwrite the result file with the new
-output. This happens often with ui tests (see below), since we may want to
-change the phrasing of errors for example. Note that the `--bless` argument is
-only accepted by the `spec` tests and will not be recognized if you also run
-other test.
+If one of the specification tests fails but you prefer the new output, or an
+output file (a `fooB.dhall` file) does not exist yet, run the test(s) with
+`--bless` to write the result file from this implementation's own output. This
+happens often with ui tests (see below), since we may want to change the
+phrasing of errors for example. Note that the `--bless` argument is only
+accepted by the `spec` tests and will not be recognized if you also run other
+tests.
 
 ```bash
-$ cargo test --test spec -- -q --bless
+$ nix develop --command cargo test --test spec -- -q --bless
 ```
+
+A missing output file is an error rather than something generated silently: a
+test with no expectation would otherwise pass against one it had just written
+for itself, and the file would go uncommitted. Don't forget to commit what
+`--bless` produces.
 
 In addition to the usual dhall tests, we additionally run "ui tests", that
 ensure that the output of the various errors stays good.
