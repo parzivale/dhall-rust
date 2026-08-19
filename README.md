@@ -262,6 +262,16 @@ there is no `rustup` step.
 remote imports, so those hosts are served locally by `nix/spoof-imports.py` --
 see that file for what it serves and why.
 
+Three checks genuinely need network, so they cannot be flake checks and run as
+workflow steps through `nix develop` instead. The tools still come from the
+flake, so they are pinned like everything else:
+
+| Command | What it does |
+| --- | --- |
+| `nix develop --command cargo semver-checks --package sessiond-serde-dhall` | Compares the public API against the last release on crates.io |
+| `nix develop --command cargo audit` | Checks dependencies against the RustSec advisory database |
+| `nix develop --command wasm-pack test --node serde_dhall` | Runs the wasm test target |
+
 Inside `nix develop`, `cargo build` and `cargo test` work as usual. Note that a
 couple of the import tests reach the live internet from there and fail, because
 the hosts they name have moved on from the pinned revision; they pass under `nix

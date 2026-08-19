@@ -29,6 +29,11 @@ pkgs.mkShell {
 
     # `cargo llvm-cov` for the coverage workflow.
     cargo-llvm-cov
+
+    # `cargo semver-checks` for the semver workflow. Compares the working tree
+    # against the last release on crates.io, so it needs network and cannot be
+    # a flake check -- see .github/workflows/semver.yml.
+    cargo-semver-checks
   ];
 
   # cargo-llvm-cov needs the matching llvm tools. Pointed at directly rather

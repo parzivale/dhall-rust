@@ -1,0 +1,30 @@
+name: Semver
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  # Compares the public API against the last version published to crates.io and
+  # fails if the change needs a bigger version bump than the manifest declares.
+  #
+  # It needs network to fetch the baseline crate, so it is a workflow step
+  # rather than a flake check. cargo-semver-checks itself comes from the
+  # devshell, so the tool is pinned by the flake like everything else.
+  #
+  # Only `sessiond-serde-dhall` is checked. `sessiond-dhall` is published but
+  # documents that its API does not respect semver, so enforcing it there would
+  # be friction with no promise behind it, and `sessiond-dhall-proc-macros` is
+  # two derive macros re-exported through `sessiond-serde-dhall` anyway.
+  semver_checks:
+    name: cargo semver-checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+      - name: Install nix
+        uses: cachix/install-nix-action@v27
+      - name: Check the public API against the last release
+        run: nix develop --command cargo semver-checks --package sessiond-serde-dhall
