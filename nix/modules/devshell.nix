@@ -1,4 +1,9 @@
 # Development environment. `nix develop`, or automatically via .envrc.
+#
+# Still load-bearing for CI: the wasm and security-audit jobs run through
+# `nix develop`, because both need network and so cannot be flake checks.
+# The dhall binary and fd used to live here for update-tests.sh; that is now
+# `nix run .#update-tests`, which carries its own.
 { pkgs, dhall-lang }:
 
 pkgs.mkShell {
@@ -21,13 +26,6 @@ pkgs.mkShell {
 
     # `cargo audit` for the security workflow; also handy locally.
     cargo-audit
-
-    # `nix run .#update-tests` brings its own dhall and fd, but they are handy
-    # to have directly. cbor2diag.rb is not in nixpkgs -- if you need to
-    # regenerate parser .diag files, `gem install cbor-diag` first.
-    dhall
-    fd
-    ruby
   ];
 
   # The spec suite reads the standard tests from here. Pointing it at the pinned
