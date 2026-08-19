@@ -401,7 +401,6 @@ dependencies = [
  "pest_consume",
  "pest_generator",
  "quote",
- "rand",
  "reqwest",
  "sha2",
  "url",

@@ -1,5 +1,4 @@
 use anyhow::Result;
-use rand::distr::{Alphanumeric, SampleString};
 use std::env;
 use std::ffi::OsString;
 use std::fmt::{Debug, Display};
@@ -753,6 +752,21 @@ fn make_writable(dir: &Path) {
 /// Note the entries are symlinks, so `--bless` still writes through to the real
 /// files. Blessing a dhall-lang fixture fails when the pin is a read-only store
 /// path, which is the right outcome — those come from upstream.
+/// Where to stage the tree: alongside the test binary, under `target`.
+///
+/// Derived from the running executable rather than assuming `target/`, so a
+/// `CARGO_TARGET_DIR` override is respected, and per-profile so that a debug
+/// and a release run do not share one.
+fn staging_root() -> PathBuf {
+    // .../target/<profile>/deps/spec-<hash> -> .../target/<profile>
+    let exe = env::current_exe().expect("test binary has a path");
+    let profile_dir = exe
+        .parent()
+        .and_then(Path::parent)
+        .expect("test binary lives in target/<profile>/deps");
+    profile_dir.join("dhall-spec-staging")
+}
+
 fn stage_test_root(crate_dir: &Path, staging: &Path) -> PathBuf {
     let dhall_lang_dir = match env::var_os("DHALL_LANG_DIR") {
         Some(dir) => PathBuf::from(dir),
@@ -775,9 +789,12 @@ fn stage_test_root(crate_dir: &Path, staging: &Path) -> PathBuf {
 fn main() {
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
-    let random_id = Alphanumeric.sample_string(&mut rand::rng(), 36);
-    let staging_dir =
-        env::temp_dir().join(format!("dhall-tests-{}", random_id));
+    // Cleared at the start rather than removed at the end, so that a run always
+    // begins with an empty import cache -- a cache carried over from a previous
+    // run changes the types some tests infer -- while what a failing run left
+    // behind is still there to look at.
+    let staging_dir = staging_root();
+    let _ = std::fs::remove_dir_all(&staging_dir);
     let dhall_lang_dir = stage_test_root(&crate_dir, &staging_dir);
 
     // Everything -- discovery, reading, and the `as Location` output the
@@ -833,8 +850,8 @@ fn main() {
     let args = Arguments::from_iter(env::args().filter(|arg| arg != "--bless"));
     let res = libtest_mimic::run(&args, tests);
 
-    // Removes the staged symlinks themselves, not the trees they point at.
-    std::fs::remove_dir_all(&staging_dir).unwrap();
+    // Deliberately left in place; the next run clears it. It is under `target`,
+    // which is gitignored, and holds symlinks plus a copy of the import cache.
 
     res.exit();
 }
