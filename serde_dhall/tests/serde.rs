@@ -338,7 +338,7 @@ mod serde {
             .static_type_annotation()
             .parse::<bool>()
             .map_err(|e| e.to_string()),
-            Err("UnexpectedImport(Import { mode: Code, location: Local(Parent, FilePath { file_path: [\"dhall-lang\", \"tests\", \"parser\", \"success\", \"unit\", \"BoolLitTrueA.dhall\"] }), hash: None })".to_string())
+            Err("importing `../dhall-lang/tests/parser/success/unit/BoolLitTrueA.dhall` is not allowed here".to_string())
         );
     }
 

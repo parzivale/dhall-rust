@@ -1,7 +1,7 @@
 use std::io::Error as IOError;
 
 use crate::semantics::resolve::{CyclesStack, ImportLocation};
-use crate::syntax::{Import, ParseError};
+use crate::syntax::{FilePrefix, Import, ImportTarget, ParseError};
 
 mod builder;
 pub use builder::*;
@@ -121,6 +121,81 @@ impl TypeError {
     }
 }
 
+/// Render an import target for an error message.
+///
+/// `Import<()>` cannot use the `Display` impl in the printer, which needs
+/// `SubExpr: Display` for the `using` clause, and `()` is not.
+fn fmt_import_target(target: &ImportTarget<()>) -> String {
+    match target {
+        ImportTarget::Local(prefix, path) => {
+            let prefix = match prefix {
+                FilePrefix::Here => ".",
+                FilePrefix::Parent => "..",
+                FilePrefix::Home => "~",
+                FilePrefix::Absolute => "",
+            };
+            format!("{}/{}", prefix, path.file_path.join("/"))
+        }
+        ImportTarget::Remote(url) => {
+            format!(
+                "{}://{}/{}",
+                url.scheme,
+                url.authority,
+                url.path.file_path.join("/")
+            )
+        }
+        ImportTarget::Env(name) => format!("env:{}", name),
+        ImportTarget::Missing => "missing".to_string(),
+    }
+}
+
+impl std::fmt::Display for ImportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            ImportError::Missing => {
+                write!(f, "the `missing` import never resolves")
+            }
+            ImportError::MissingEnvVar => {
+                write!(f, "the environment variable is not set")
+            }
+            ImportError::MissingHome => {
+                write!(f, "could not locate the home directory")
+            }
+            ImportError::SanityCheck => write!(
+                f,
+                "a remote import may not depend on an environment variable or \
+                 a local file"
+            ),
+            ImportError::CorsRejected { parent, child } => write!(
+                f,
+                "{} does not grant {} access via Access-Control-Allow-Origin",
+                child, parent
+            ),
+            ImportError::RemoteImportsDisabled { location } => {
+                write!(f, "remote imports are disabled: {}", location)
+            }
+            ImportError::UnexpectedImport(import) => write!(
+                f,
+                "importing `{}` is not allowed here",
+                fmt_import_target(&import.location)
+            ),
+            // Innermost first, which is the order they were entered in.
+            ImportError::ImportCycle(stack, location) => {
+                write!(
+                    f,
+                    "cyclic import: {} is already being resolved",
+                    location
+                )?;
+                for entry in stack.iter().rev() {
+                    write!(f, "\n  ... which was imported by {}", entry)?;
+                }
+                Ok(())
+            }
+            ImportError::Url(err) => write!(f, "invalid import URL: {}", err),
+        }
+    }
+}
+
 impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         use TypeMessage::*;
@@ -151,22 +226,7 @@ impl std::fmt::Display for Error {
             ErrorKind::Parse(err) => write!(f, "{}", err),
             ErrorKind::Decode(err) => write!(f, "{:?}", err),
             ErrorKind::Encode(err) => write!(f, "{:?}", err),
-            // Spelled out rather than `{:?}`, because it is the only import
-            // error carrying data a reader needs to act on.
-            ErrorKind::Resolve(ImportError::CorsRejected { parent, child }) => {
-                write!(
-                    f,
-                    "{} does not grant {} access via \
-                     Access-Control-Allow-Origin",
-                    child, parent
-                )
-            }
-            ErrorKind::Resolve(ImportError::RemoteImportsDisabled {
-                location,
-            }) => {
-                write!(f, "remote imports are disabled: {}", location)
-            }
-            ErrorKind::Resolve(err) => write!(f, "{:?}", err),
+            ErrorKind::Resolve(err) => write!(f, "{}", err),
             ErrorKind::Typecheck(err) => write!(f, "{}", err),
             ErrorKind::Cache(err) => write!(f, "{:?}", err),
         }

@@ -2,4 +2,4 @@ Type error: error: error
   --> <current file>:13:1
    |
 13 | https://raw.githubusercontent.com/dhall-lang/dhall-lang/master/tests/import/data/referentiallyOpaque.dhall
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ SanityCheck
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ a remote import may not depend on an environment variable or a local file

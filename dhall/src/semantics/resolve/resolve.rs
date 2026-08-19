@@ -203,6 +203,18 @@ impl ImportLocationKind {
     }
 }
 
+impl std::fmt::Display for ImportLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match &self.kind {
+            ImportLocationKind::Local(path) => write!(f, "{}", path.display()),
+            ImportLocationKind::Remote(url) => write!(f, "{}", url),
+            ImportLocationKind::Env(name) => write!(f, "env:{}", name),
+            ImportLocationKind::Missing => write!(f, "missing"),
+            ImportLocationKind::NoImport => write!(f, "<no import>"),
+        }
+    }
+}
+
 impl ImportLocation {
     pub fn dhall_code_of_unknown_origin() -> Self {
         ImportLocation {
