@@ -579,14 +579,6 @@ fn ignore_test(variant: SpecTestKind, path: &str) -> bool {
         // alpha-normalized: `Type -> Optional _ -> Bool` rather than
         // `forall(a : Type) -> forall(xs : Optional a) -> Bool`.
         || path == "type-inference/success/prelude"
-        // TODO: cors
-        || path == "import/success/unit/cors/AllowedAll"
-        || path == "import/success/unit/cors/Prelude"
-        || path == "import/success/unit/cors/SelfImportRelative"
-        || path == "import/success/unit/cors/SelfImportAbsolute"
-        || path == "import/success/unit/cors/SelfImportAbsolute2"
-        || path == "import/success/unit/cors/TwoHops"
-        || path == "import/success/unit/cors/OnlyGithub"
         // TODO: send custom headers and implement the forwarding rules. These
         // three also need a live server that varies its response on a request
         // header, which the sandbox's import-spoofing proxy does not emulate.

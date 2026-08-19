@@ -60,6 +60,9 @@ import sys
 
 GITHUB_HOST = "raw.githubusercontent.com"
 TEST_HOST = "test.dhall-lang.org"
+# Serves the Prelude at the repository root, so `/List/length` is
+# `Prelude/List/length` -- which exists alongside `length.dhall`.
+PRELUDE_HOST = "prelude.dhall-lang.org"
 
 DHALL_LANG_PREFIX = "/dhall-lang/dhall-lang/"
 DHALL_RUST_PREFIX = "/Nadrieril/dhall-rust/"
@@ -96,20 +99,36 @@ _GITHUB_CORS = (
     "5ff7ecd2411894dd9ce307dc23020987361d2d43/tests/import/data/cors/"
 )
 
-# From the `cors-endpoint` calls in dhall-lang's nixops/logical.nix. nginx
-# serves them with `echo`, which appends a newline.
+# From the `cors-endpoint` calls in dhall-lang's nixops/logical.nix, as
+# (body, Access-Control-Allow-Origin). nginx serves the bodies with `echo`,
+# which appends a newline; `None` means the header is absent entirely.
+#
+# logical.nix writes the origins bare ("raw.githubusercontent.com"); they are
+# spelled as full origins here because the standard requires it, not as a guess
+# at what the live server sends. standard/imports.md gives the rule as
+#
+#     headers("Access-Control-Allow-Origin") = [ "https://authority" ]
+#     ────────────────────────────────────────────────────────────────
+#     corsCompliant(https://authority directory file, child, headers)
+#
+# and the suite's own expected output agrees: success/unit/cors/OnlyGithubB is
+# `42`, so that import must be accepted from a raw.githubusercontent.com parent.
+# Its policy is github-only rather than `*`, so only the full origin matches.
 CORS_BODIES = {
-    "AllowedAll.dhall": "42",
-    "OnlyGithub.dhall": "42",
-    "OnlySelf.dhall": "42",
-    "OnlyOther.dhall": "42",
-    "Empty.dhall": "42",
-    "NoCORS.dhall": "42",
-    "Null.dhall": "42",
-    "SelfImportAbsolute.dhall": "https://test.dhall-lang.org/cors/NoCORS.dhall",
-    "SelfImportRelative.dhall": "./NoCORS.dhall",
-    "TwoHopsFail.dhall": _GITHUB_CORS + "OnlySelf.dhall",
-    "TwoHopsSuccess.dhall": _GITHUB_CORS + "OnlyGithub.dhall",
+    "AllowedAll.dhall": ("42", "*"),
+    "OnlyGithub.dhall": ("42", "https://raw.githubusercontent.com"),
+    "OnlySelf.dhall": ("42", "https://test.dhall-lang.org"),
+    "OnlyOther.dhall": ("42", "https://example.com"),
+    "Empty.dhall": ("42", ""),
+    "NoCORS.dhall": ("42", None),
+    "Null.dhall": ("42", "null"),
+    "SelfImportAbsolute.dhall": (
+        "https://test.dhall-lang.org/cors/NoCORS.dhall",
+        "*",
+    ),
+    "SelfImportRelative.dhall": ("./NoCORS.dhall", "*"),
+    "TwoHopsFail.dhall": (_GITHUB_CORS + "OnlySelf.dhall", "*"),
+    "TwoHopsSuccess.dhall": (_GITHUB_CORS + "OnlyGithub.dhall", "*"),
 }
 
 
@@ -138,27 +157,45 @@ def _read_from_pin(rel_path: str) -> "str | None":
         return None
 
 
-def lookup(host: str, path: str) -> "tuple[int, str]":
-    """Resolve a request to (status, body)."""
+def lookup(host: str, path: str) -> "tuple[int, str, dict]":
+    """Resolve a request to (status, body, extra response headers)."""
     if host == GITHUB_HOST:
+        # GitHub raw serves everything with an open CORS policy.
+        headers = {"Access-Control-Allow-Origin": "*"}
         if path.startswith(DHALL_LANG_PREFIX):
             body = _read_from_pin(_strip_ref(path, DHALL_LANG_PREFIX))
-            return (200, body) if body is not None else (404, NOT_FOUND_BODY)
+            if body is not None:
+                return 200, body, headers
+            return 404, NOT_FOUND_BODY, {}
         if path.startswith(DHALL_RUST_PREFIX):
             body = DHALL_RUST_BODIES.get(_strip_ref(path, DHALL_RUST_PREFIX))
-            return (
-                (200, body + "\n") if body is not None else (404, NOT_FOUND_BODY)
-            )
-        return 404, NOT_FOUND_BODY
+            if body is not None:
+                return 200, body + "\n", headers
+            return 404, NOT_FOUND_BODY, {}
+        return 404, NOT_FOUND_BODY, {}
+
+    if host == PRELUDE_HOST:
+        # Open policy: the Prelude is meant to be imported from anywhere, and
+        # import/success/unit/cors/Prelude reaches it from a GitHub-hosted
+        # parent.
+        body = _read_from_pin("Prelude" + path)
+        if body is not None:
+            return 200, body, {"Access-Control-Allow-Origin": "*"}
+        return 404, NOT_FOUND_BODY, {}
 
     if host == TEST_HOST:
         name = path[len("/cors/"):] if path.startswith("/cors/") else None
         if name in CORS_BODIES:
-            return 200, CORS_BODIES[name] + "\n"
-        return 404, NOT_FOUND_BODY
+            body, allow_origin = CORS_BODIES[name]
+            headers = (
+                {} if allow_origin is None
+                else {"Access-Control-Allow-Origin": allow_origin}
+            )
+            return 200, body + "\n", headers
+        return 404, NOT_FOUND_BODY, {}
 
     # Reaching anything else would need the network this stands in for.
-    return 502, f"spoof-imports: unexpected host {host}{path}\n"
+    return 502, f"spoof-imports: unexpected host {host}{path}\n", {}
 
 
 def _canonicalize(path: str) -> str:
@@ -183,13 +220,13 @@ def request(flow) -> None:
 
     host = flow.request.pretty_host
     path = flow.request.path
-    status, body = lookup(host, path)
+    status, body, extra_headers = lookup(host, path)
 
     if status != 200 and (host, _canonicalize(path)) not in EXPECTED_404:
         _record_miss(host, path, status)
 
-    flow.response = http.Response.make(
-        status, body, {"Content-Type": "text/plain; charset=utf-8"}
-    )
+    headers = {"Content-Type": "text/plain; charset=utf-8"}
+    headers.update(extra_headers)
+    flow.response = http.Response.make(status, body, headers)
 
 

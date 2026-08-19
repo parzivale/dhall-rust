@@ -110,11 +110,16 @@ impl ImportLocationKind {
         })
     }
 
-    fn fetch_dhall(&self) -> Result<Parsed, Error> {
+    fn fetch_dhall(&self, parent: &ImportLocationKind) -> Result<Parsed, Error> {
         Ok(match self {
             ImportLocationKind::Local(path) => Parsed::parse_file(path)?,
             ImportLocationKind::Remote(url) => {
-                Parsed::parse_remote(url.clone())?
+                let response = download_http(url.clone())?;
+                check_cors(parent, url, &response)?;
+                crate::semantics::parse::parse_remote_body(
+                    url.clone(),
+                    &response.body,
+                )?
             }
             ImportLocationKind::Env(var_name) => {
                 let val = match env::var(var_name) {
@@ -130,13 +135,20 @@ impl ImportLocationKind {
         })
     }
 
-    fn fetch_text(&self) -> Result<String, Error> {
+    fn fetch_text(
+        &self,
+        parent: &ImportLocationKind,
+    ) -> Result<String, Error> {
         Ok(match self {
             ImportLocationKind::Local(path) => {
                 let path = resolve_home(path)?;
                 std::fs::read_to_string(path)?
             }
-            ImportLocationKind::Remote(url) => download_http_text(url.clone())?,
+            ImportLocationKind::Remote(url) => {
+                let response = download_http(url.clone())?;
+                check_cors(parent, url, &response)?;
+                response.body
+            }
             ImportLocationKind::Env(var_name) => match env::var(var_name) {
                 Ok(val) => val,
                 Err(_) => return Err(ImportError::MissingEnvVar.into()),
@@ -218,12 +230,9 @@ impl ImportLocation {
                 self.kind.chain_local(*prefix, path)?
             }
             ImportTarget::Remote(remote) => {
-                if matches!(self.kind, ImportLocationKind::Remote(..))
-                    && !matches!(import.mode, ImportMode::Location)
-                {
-                    // TODO: allow if CORS check passes
-                    return Err(ImportError::SanityCheck.into());
-                }
+                // A remote parent reaching another origin is allowed here and
+                // checked once the response is in hand: the decision needs the
+                // child's `Access-Control-Allow-Origin` header. See check_cors.
                 let mut url = Url::parse(&format!(
                     "{}://{}",
                     remote.scheme, remote.authority
@@ -252,12 +261,13 @@ impl ImportLocation {
     fn fetch<'cx>(
         &self,
         env: &mut ImportEnv<'cx>,
+        parent: &ImportLocationKind,
         span: Span,
     ) -> Result<Typed<'cx>, Error> {
         let cx = env.cx();
         let typed = match self.mode {
             ImportMode::Code => {
-                let parsed = self.kind.fetch_dhall()?;
+                let parsed = self.kind.fetch_dhall(parent)?;
                 let typed = parsed.resolve_with_env(env)?.typecheck(cx)?;
                 Typed {
                     // TODO: manage to keep the Nir around. Will need fixing variables.
@@ -266,7 +276,7 @@ impl ImportLocation {
                 }
             }
             ImportMode::RawText => {
-                let text = self.kind.fetch_text()?;
+                let text = self.kind.fetch_text(parent)?;
                 Typed {
                     hir: Hir::new(
                         HirKind::Expr(ExprKind::TextLit(text.into())),
@@ -292,17 +302,76 @@ fn mkexpr(kind: UnspannedExpr) -> Expr {
     Expr::new(kind, Span::Artificial)
 }
 
+/// The CORS judgment, `corsCompliant(parent, child, headers)` in
+/// standard/imports.md.
+///
+/// Guards against server-side request forgery: without it, a remote file could
+/// use whoever resolves it as a proxy onto hosts they can reach and it cannot.
+/// A cross-origin remote import therefore has to opt in through a response
+/// header, and anything other than exactly one matching value is a rejection.
+fn check_cors(
+    parent: &ImportLocationKind,
+    child: &Url,
+    response: &HttpResponse,
+) -> Result<(), Error> {
+    // Only a remote parent can forge a request; a local file already has the
+    // user's authority.
+    let parent = match parent {
+        ImportLocationKind::Remote(url) => url,
+        _ => return Ok(()),
+    };
+
+    // Same origin needs no header.
+    if parent.scheme() == child.scheme()
+        && parent.authority() == child.authority()
+    {
+        return Ok(());
+    }
+
+    let origin = format!("{}://{}", parent.scheme(), parent.authority());
+    match response.allow_origin.as_slice() {
+        [allowed] if allowed == "*" || *allowed == origin => Ok(()),
+        _ => Err(ImportError::CorsRejected {
+            parent: origin,
+            child: child.to_string(),
+        }
+        .into()),
+    }
+}
+
+/// What a remote import returned.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct HttpResponse {
+    pub body: String,
+    /// Every value of the `Access-Control-Allow-Origin` response header.
+    ///
+    /// Kept as a list because the CORS judgment rejects a response carrying
+    /// anything other than exactly one.
+    pub allow_origin: Vec<String>,
+}
+
 // TODO: error handling
 #[cfg(all(not(target_arch = "wasm32"), feature = "reqwest"))]
-pub(crate) fn download_http_text(url: Url) -> Result<String, Error> {
-    Ok(reqwest::blocking::get(url).unwrap().text().unwrap())
+pub(crate) fn download_http(url: Url) -> Result<HttpResponse, Error> {
+    let response = reqwest::blocking::get(url).unwrap();
+    let allow_origin = response
+        .headers()
+        .get_all(reqwest::header::ACCESS_CONTROL_ALLOW_ORIGIN)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .map(str::to_owned)
+        .collect();
+    Ok(HttpResponse {
+        body: response.text().unwrap(),
+        allow_origin,
+    })
 }
 #[cfg(all(not(target_arch = "wasm32"), not(feature = "reqwest")))]
-pub(crate) fn download_http_text(_url: Url) -> Result<String, Error> {
+pub(crate) fn download_http(_url: Url) -> Result<HttpResponse, Error> {
     panic!("Remote imports are disabled in this build of dhall-rust")
 }
 #[cfg(target_arch = "wasm32")]
-pub(crate) fn download_http_text(_url: Url) -> Result<String, Error> {
+pub(crate) fn download_http(_url: Url) -> Result<HttpResponse, Error> {
     panic!("Remote imports are not supported on wasm yet")
 }
 
@@ -412,7 +481,7 @@ fn fetch_import<'cx>(
         // Resolve this import, making sure that recursive imports don't cycle back to the
         // current one.
         let res = env.with_cycle_detection(location.clone(), |env| {
-            location.fetch(env, span.clone())
+            location.fetch(env, &cx[import_id].base_location.kind, span.clone())
         });
         let typed = match res {
             Ok(typed) => typed,

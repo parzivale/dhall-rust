@@ -2,7 +2,7 @@ use std::path::Path;
 use url::Url;
 
 use crate::error::Error;
-use crate::semantics::resolve::{download_http_text, ImportLocation};
+use crate::semantics::resolve::{download_http, ImportLocation};
 use crate::syntax::{binary, parse_expr};
 use crate::Parsed;
 
@@ -15,8 +15,16 @@ pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
 }
 
 pub fn parse_remote(url: Url) -> Result<Parsed, Error> {
-    let body = download_http_text(url.clone())?;
-    let expr = parse_expr(&body)?;
+    let body = download_http(url.clone())?.body;
+    parse_remote_body(url, &body)
+}
+
+/// Parse a body already fetched from `url`.
+///
+/// Import resolution downloads remote imports itself, because it has to apply
+/// the CORS judgment to the response headers before trusting the body.
+pub fn parse_remote_body(url: Url, body: &str) -> Result<Parsed, Error> {
+    let expr = parse_expr(body)?;
     let root = ImportLocation::remote_dhall_code(url);
     Ok(Parsed(expr, root))
 }

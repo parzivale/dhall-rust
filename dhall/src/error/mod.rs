@@ -36,6 +36,9 @@ pub enum ImportError {
     MissingEnvVar,
     MissingHome,
     SanityCheck,
+    /// A cross-origin remote import did not opt in via
+    /// `Access-Control-Allow-Origin`.
+    CorsRejected { parent: String, child: String },
     UnexpectedImport(Import<()>),
     ImportCycle(CyclesStack, ImportLocation),
     Url(url::ParseError),
@@ -141,6 +144,16 @@ impl std::fmt::Display for Error {
             ErrorKind::Parse(err) => write!(f, "{}", err),
             ErrorKind::Decode(err) => write!(f, "{:?}", err),
             ErrorKind::Encode(err) => write!(f, "{:?}", err),
+            // Spelled out rather than `{:?}`, because it is the only import
+            // error carrying data a reader needs to act on.
+            ErrorKind::Resolve(ImportError::CorsRejected { parent, child }) => {
+                write!(
+                    f,
+                    "{} does not grant {} access via \
+                     Access-Control-Allow-Origin",
+                    child, parent
+                )
+            }
             ErrorKind::Resolve(err) => write!(f, "{:?}", err),
             ErrorKind::Typecheck(err) => write!(f, "{}", err),
             ErrorKind::Cache(err) => write!(f, "{:?}", err),
