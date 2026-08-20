@@ -7,8 +7,7 @@
 )]
 
 use itertools::Itertools;
-use pest::prec_climber as pcl;
-use pest::prec_climber::PrecClimber;
+use pest::pratt_parser::{Assoc, Op, PrattParser};
 use std::collections::{BTreeMap, BTreeSet};
 use std::iter::once;
 use std::rc::Rc;
@@ -118,30 +117,48 @@ fn insert_recordlit_entry(map: &mut BTreeMap<Label, Expr>, l: Label, e: Expr) {
     }
 }
 
-static PRECCLIMBER: LazyLock<PrecClimber<Rule>> = LazyLock::new(|| {
+/// The binary operator an operator rule denotes.
+fn binop_of_rule(op: &ParseInput) -> ParseResult<crate::operations::BinOp> {
+    use crate::operations::BinOp::*;
     use Rule::*;
-    // In order of precedence
-    let operators = vec![
-        equivalent,
-        import_alt,
-        bool_or,
-        natural_plus,
-        text_append,
-        list_append,
-        bool_and,
-        combine,
-        prefer,
-        combine_types,
-        natural_times,
-        bool_eq,
-        bool_ne,
-    ];
-    PrecClimber::new(
-        operators
-            .into_iter()
-            .map(|op| pcl::Operator::new(op, pcl::Assoc::Left))
-            .collect(),
-    )
+    Ok(match op.as_rule() {
+        import_alt => ImportAlt,
+        bool_or => BoolOr,
+        natural_plus => NaturalPlus,
+        text_append => TextAppend,
+        list_append => ListAppend,
+        bool_and => BoolAnd,
+        combine => RecursiveRecordMerge,
+        prefer => RightBiasedRecordMerge,
+        combine_types => RecursiveRecordTypeMerge,
+        natural_times => NaturalTimes,
+        bool_eq => BoolEQ,
+        bool_ne => BoolNE,
+        equivalent => Equivalence,
+        r => return Err(op.error(format!("Rule {r:?} isn't an operator"))),
+    })
+}
+
+/// The binary operators, loosest-binding first: each `op` call is one
+/// precedence level tighter than the last. Every Dhall operator is infix and
+/// left-associative.
+static PRATT: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
+    use Rule::*;
+    let infix = |rule| Op::infix(rule, Assoc::Left);
+    PrattParser::new()
+        .op(infix(equivalent))
+        .op(infix(import_alt))
+        .op(infix(bool_or))
+        .op(infix(natural_plus))
+        .op(infix(text_append))
+        .op(infix(list_append))
+        .op(infix(bool_and))
+        .op(infix(combine))
+        .op(infix(prefer))
+        .op(infix(combine_types))
+        .op(infix(natural_times))
+        .op(infix(bool_eq))
+        .op(infix(bool_ne))
 });
 
 // Generate pest parser manually because otherwise we'd need to modify something outside of OUT_DIR
@@ -728,37 +745,23 @@ impl DhallParser {
     }
 
     #[alias(expression, shortcut = true)]
-    #[prec_climb(expression, PRECCLIMBER)]
-    // `prec_climb` calls this with the operator node by value; taking `&ParseInput`
-    // does not typecheck against the signature the macro generates.
-    #[expect(clippy::needless_pass_by_value)]
-    fn operator_expression(
-        l: Expr,
-        op: ParseInput,
-        r: Expr,
-    ) -> ParseResult<Expr> {
-        use crate::operations::BinOp::*;
-        use Rule::*;
-        let op = match op.as_rule() {
-            import_alt => ImportAlt,
-            bool_or => BoolOr,
-            natural_plus => NaturalPlus,
-            text_append => TextAppend,
-            list_append => ListAppend,
-            bool_and => BoolAnd,
-            combine => RecursiveRecordMerge,
-            prefer => RightBiasedRecordMerge,
-            combine_types => RecursiveRecordTypeMerge,
-            natural_times => NaturalTimes,
-            bool_eq => BoolEQ,
-            bool_ne => BoolNE,
-            equivalent => Equivalence,
-            r => {
-                return Err(op.error(format!("Rule {r:?} isn't an operator")));
-            }
-        };
+    fn operator_expression(input: ParseInput) -> ParseResult<Expr> {
+        let user_data = input.user_data().clone();
+        // `PrattParser` works on pest's own `Pair`s, so each one has to be
+        // wrapped back into a `Node` carrying the input text before the rest of
+        // this file can consume it.
+        let node =
+            |pair| ParseInput::new_with_user_data(pair, user_data.clone());
 
-        Ok(spanned_union(&l.span(), &r.span(), Op(BinOp(op, l, r))))
+        PRATT
+            .map_primary(|pair| Self::expression(node(pair)))
+            .map_infix(|l, pair, r| {
+                let (l, r) = (l?, r?);
+                let op = node(pair);
+                let op = binop_of_rule(&op)?;
+                Ok(spanned_union(&l.span(), &r.span(), Op(BinOp(op, l, r))))
+            })
+            .parse(input.into_children().into_pairs())
     }
 
     fn Some_(input: ParseInput) -> ParseResult<()> {
