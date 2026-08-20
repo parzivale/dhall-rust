@@ -34,6 +34,28 @@ rec {
         touch $out
       '';
 
+  # The lint set lives in the workspace `[lints.clippy]` table, which on its own
+  # only asks; this is what tells. `--all-targets` so the tests are linted too,
+  # and `-D warnings` because a warning nothing fails on is a warning that
+  # accumulates.
+  clippy = package.overrideAttrs (old: {
+    pname = "sessiond-dhall-rust-clippy";
+
+    nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.clippy ];
+
+    buildPhase = ''
+      runHook preBuild
+      cargo clippy --workspace --all-targets --offline -- -D warnings
+      runHook postBuild
+    '';
+
+    installPhase = ''
+      runHook preInstall
+      touch $out
+      runHook postInstall
+    '';
+  });
+
   # nix/lib/to-dhall.nix, checked by typechecking what it emits. The fixture
   # evaluating at all is half the test: it asserts that the values Dhall
   # cannot represent are rejected rather than mistranslated.
