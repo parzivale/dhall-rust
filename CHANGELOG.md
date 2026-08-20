@@ -1,5 +1,40 @@
 # Changelog
 
+#### [2.0.0] - 2026-08-20
+
+##### Read this before upgrading
+
+- BREAKING CHANGE: **`Function::apply` takes its argument by reference.**
+  `f.apply::<_, u64>(41u64)` becomes `f.apply::<_, u64>(&41u64)`. The argument
+  was never consumed, only serialized. The bound also gained `?Sized`, so
+  `f.apply::<str, _>("world")` now works without going through `&&str`
+- BREAKING CHANGE: **`Deserializer::with_builtin_type` takes both parameters by
+  reference.** `.with_builtin_type("Foo".to_string(), Foo::static_type())`
+  becomes `.with_builtin_type("Foo", &Foo::static_type())`. The name no longer
+  needs an owned `String` at the call site
+
+##### Other changes
+
+- Many public functions gained `#[must_use]`. Code that discards one of these
+  return values now gets a lint, which is an error under `#![deny(warnings)]`.
+  The builder methods are the ones worth noticing — `Deserializer::imports` and
+  friends return a new value rather than mutating, so discarding one was always
+  a silent no-op
+- `clippy::pedantic` passes across the workspace, and CI can gate on it. Most of
+  that was mechanical, but three changes are worth calling out:
+  - `dhall::error::Error` holds its `ErrorKind` behind a `Box`. `Err` was 152
+    bytes and rode in the return type of nearly every function in the crate; it
+    is now 16. The field is private, so no user code changes
+  - decoding a variable's de Bruijn index from CBOR used `as usize`, which
+    truncated rather than failing on a 32-bit target. It is now checked
+  - the `ErrorBuilder` methods and `mkerr`/`mk_span_err` take `impl Into<String>`
+    rather than `impl ToString`, so passing an owned `String` — which is what
+    almost every caller has — moves it instead of allocating a copy
+- Suppressions are `#[expect]` rather than `#[allow]` wherever that works, so a
+  suppression that stops being needed is now a warning instead of dead weight.
+  Converting them found ten that were already dead
+- `sessiond-dhall` only: `typecheck_operation` takes its `Span` by reference
+
 #### [1.0.1] - 2026-08-20
 
 - BREAKING CHANGE: the crates are edition 2024 and so need Rust 1.85 or later.

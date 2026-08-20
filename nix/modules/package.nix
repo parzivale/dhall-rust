@@ -21,7 +21,8 @@ let
 in
 pkgs.rustPlatform.buildRustPackage {
   pname = "sessiond-dhall-rust";
-  version = "1.0.1";
+  # Keep in step with the crate versions; nothing checks this automatically.
+  version = "2.0.0";
   inherit src;
 
   cargoLock.lockFile = ../../Cargo.lock;
