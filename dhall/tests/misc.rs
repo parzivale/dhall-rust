@@ -7,11 +7,11 @@ use sessiond_dhall::*;
 
 /// Test that showcases someone using the `dhall` crate directly for a simple operation. If
 /// possible try not to break this too much. See
-/// https://github.com/Nadrieril/dhall-rust/issues/208.
+/// <https://github.com/Nadrieril/dhall-rust/issues/208>.
 #[test]
 fn manual_function_application() {
     /// Apply a `Natural -> Natural` function to an argument.
-    fn apply_natnat_fn<'cx>(f: &Nir<'cx>, n: u64) -> u64 {
+    fn apply_natnat_fn(f: &Nir<'_>, n: u64) -> u64 {
         // Convert the number to the internal representation. `Natural` is
         // arbitrary-precision, so this widens rather than being a plain `u64`.
         let n_nir = Nir::from_kind(NirKind::Num(NumKind::Natural(n.into())));

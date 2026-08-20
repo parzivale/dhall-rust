@@ -1,3 +1,7 @@
+// Each test defines the types it exercises next to the assertions that use
+// them, which reads better than hoisting every one to the top of the file.
+#![expect(clippy::items_after_statements)]
+
 mod serde {
     use serde::{Deserialize, Serialize};
     use sessiond_serde_dhall::{
@@ -17,12 +21,12 @@ mod serde {
             Ok(x)
         );
     }
-    fn assert_ser<T>(s: &str, x: T)
+    fn assert_ser<T>(s: &str, x: &T)
     where
         T: ToDhall + StaticType + PartialEq + std::fmt::Debug,
     {
         assert_eq!(
-            serialize(&x)
+            serialize(x)
                 .static_type_annotation()
                 .to_string()
                 .map_err(|e| e.to_string()),
@@ -38,8 +42,8 @@ mod serde {
             + std::fmt::Debug
             + Clone,
     {
-        assert_de(s, x.clone());
-        assert_ser(s, x);
+        assert_ser(s, &x);
+        assert_de(s, x);
     }
 
     #[test]
@@ -61,7 +65,7 @@ mod serde {
     #[test]
     fn text() {
         assert_serde(r#""foo""#, "foo".to_owned());
-        assert_ser(r#""foo""#, "foo");
+        assert_ser(r#""foo""#, &"foo");
     }
 
     #[test]
@@ -72,7 +76,7 @@ mod serde {
             r#"["foo", "bar"]"#,
             vec!["foo".to_owned(), "bar".to_owned()],
         );
-        assert_ser(r#"["foo", "bar"]"#, vec!["foo", "bar"]);
+        assert_ser(r#"["foo", "bar"]"#, &vec!["foo", "bar"]);
         assert_serde::<Vec<u64>>("[1, 2]", vec![1, 2]);
     }
 
@@ -89,13 +93,13 @@ mod serde {
 
     #[test]
     fn tuple() {
-        assert_serde::<()>(r#"{=}"#, ());
+        assert_serde::<()>(r"{=}", ());
         assert_serde::<(u64, String)>(
             r#"{ _1 = 1, _2 = "foo" }"#,
             (1, "foo".to_owned()),
         );
         assert_serde::<(u64, u64, u64, u64)>(
-            r#"{ _1 = 1, _2 = 2, _3 = 3, _4 = 4 }"#,
+            r"{ _1 = 1, _2 = 2, _3 = 3, _4 = 4 }",
             (1, 2, 3, 4),
         );
     }
@@ -162,7 +166,7 @@ mod serde {
 
         assert_eq!(
             from_str("Foo.X 1")
-                .with_builtin_type("Foo".to_string(), Foo::static_type())
+                .with_builtin_type("Foo", &Foo::static_type())
                 .static_type_annotation()
                 .parse::<Foo>()
                 .unwrap(),
@@ -194,8 +198,8 @@ mod serde {
 
         assert_eq!(
             from_str("Baz.X Bar.A")
-                .with_builtin_type("Bar".to_string(), Bar::static_type())
-                .with_builtin_type("Baz".to_string(), Baz::static_type())
+                .with_builtin_type("Bar", &Bar::static_type())
+                .with_builtin_type("Baz", &Baz::static_type())
                 .static_type_annotation()
                 .parse::<Baz>()
                 .unwrap(),
@@ -208,7 +212,7 @@ mod serde {
         assert_eq!(
             from_str("Baz.X Bar.A")
                 .with_builtin_types(substs.clone())
-                .with_builtin_type("Bar".to_string(), Bar::static_type())
+                .with_builtin_type("Bar", &Bar::static_type())
                 .static_type_annotation()
                 .parse::<Baz>()
                 .unwrap(),
@@ -221,7 +225,7 @@ mod serde {
         assert_eq!(
             from_str("Baz.X Bar.A")
                 .with_builtin_types(substs)
-                .with_builtin_type("Bar".to_string(), Bar::static_type())
+                .with_builtin_type("Bar", &Bar::static_type())
                 .static_type_annotation()
                 .parse::<Baz>()
                 .unwrap(),
@@ -301,8 +305,8 @@ mod serde {
     /// (the nix devshell does), else a checkout beside the workspace.
     fn dhall_lang_file(rel_path: &str) -> String {
         match std::env::var("DHALL_LANG_DIR") {
-            Ok(dir) => format!("{}/{}", dir, rel_path),
-            Err(_) => format!("../dhall-lang/{}", rel_path),
+            Ok(dir) => format!("{dir}/{rel_path}"),
+            Err(_) => format!("../dhall-lang/{rel_path}"),
         }
     }
 
@@ -359,8 +363,7 @@ mod serde {
         assert!(
             err.contains("remote imports are disabled")
                 && err.contains("https://example.com/config.dhall"),
-            "expected the error to name the refused import, got: {}",
-            err
+            "expected the error to name the refused import, got: {err}"
         );
 
         // A local import is still resolved.
@@ -384,7 +387,7 @@ mod serde {
     }
 
     #[test]
-    #[ignore] // Way too slow
+    #[ignore = "way too slow"]
     fn test_prelude() {
         assert_eq!(
             sessiond_serde_dhall::from_str(

@@ -4,10 +4,10 @@ use std::iter::FromIterator;
 use crate::syntax::*;
 
 fn opt<'a, T, U, Err>(
-    x: &'a Option<T>,
+    x: Option<&'a T>,
     f: impl FnOnce(&'a T) -> Result<U, Err>,
 ) -> Result<Option<U>, Err> {
-    x.as_ref().map(f).transpose()
+    x.map(f).transpose()
 }
 
 fn dupmap<'a, SE1, SE2, T, Err>(
@@ -45,7 +45,7 @@ where
             |e| Ok(opt!(e))
         };
         ($e:expr) => {
-            opt($e, |e| Ok(expr!(e)))?
+            opt($e.as_ref(), |e| Ok(expr!(e)))?
         };
     }
 

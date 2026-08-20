@@ -36,7 +36,7 @@ impl<'cx> Deref for Ctxt<'cx> {
         &self.0
     }
 }
-impl<'a, 'cx, T> Index<&'a T> for CtxtS<'cx>
+impl<'a, T> Index<&'a T> for CtxtS<'_>
 where
     Self: Index<T>,
     T: Copy,
@@ -49,7 +49,7 @@ where
 
 /// Empty impl, because `FrozenVec` does not implement `Debug` and I can't be bothered to do it
 /// myself.
-impl<'cx> std::fmt::Debug for Ctxt<'cx> {
+impl std::fmt::Debug for Ctxt<'_> {
     fn fmt(&self, _: &mut std::fmt::Formatter) -> std::fmt::Result {
         Ok(())
     }
@@ -112,6 +112,7 @@ impl<'cx> StoredImport<'cx> {
 }
 impl<'cx> Ctxt<'cx> {
     /// Store an import and the location relative to which it must be resolved.
+    #[must_use]
     pub fn push_import(
         self,
         base_location: ImportLocation,
@@ -153,7 +154,7 @@ pub struct StoredImportAlternative<'cx> {
     selected: OnceCell<bool>,
 }
 
-impl<'cx> StoredImportAlternative<'cx> {
+impl StoredImportAlternative<'_> {
     /// Get which alternative got selected. `true` for left, `false` for right.
     pub fn get_selected(&self) -> Option<bool> {
         self.selected.get().copied()
@@ -169,6 +170,7 @@ impl<'cx> StoredImportAlternative<'cx> {
     }
 }
 impl<'cx> Ctxt<'cx> {
+    #[must_use]
     pub fn push_import_alternative(
         self,
         left_imports: Box<[ImportNode<'cx>]>,
@@ -204,6 +206,7 @@ type StoredImportResult<'cx> = Typed<'cx>;
 
 impl<'cx> Ctxt<'cx> {
     /// Store the result of fetching an import.
+    #[must_use]
     pub fn push_import_result(
         self,
         res: StoredImportResult<'cx>,

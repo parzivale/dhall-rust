@@ -131,6 +131,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
     ///
     /// [`StaticType`]: crate::StaticType
     /// [`static_type_annotation()`]: Deserializer::static_type_annotation()
+    #[must_use]
     pub fn type_annotation<'ty>(
         self,
         ty: &'ty SimpleType,
@@ -186,6 +187,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
     ///
     /// [`StaticType`]: crate::StaticType
     /// [`type_annotation()`]: Deserializer::type_annotation()
+    #[must_use]
     pub fn static_type_annotation(self) -> Deserializer<'a, StaticAnnot> {
         Deserializer {
             annot: StaticAnnot,
@@ -197,7 +199,7 @@ impl<'a> Deserializer<'a, NoAnnot> {
     }
 }
 
-impl<'a, A> Deserializer<'a, A> {
+impl<A> Deserializer<'_, A> {
     /// Sets whether to enable imports.
     ///
     /// By default, imports are enabled.
@@ -219,6 +221,7 @@ impl<'a, A> Deserializer<'a, A> {
     /// # Ok(())
     /// # }
     /// ```
+    #[must_use]
     pub fn imports(self, imports: bool) -> Self {
         Deserializer {
             allow_imports: imports,
@@ -253,6 +256,7 @@ impl<'a, A> Deserializer<'a, A> {
     /// # Ok(())
     /// # }
     /// ```
+    #[must_use]
     pub fn remote_imports(self, imports: bool) -> Self {
         Deserializer {
             allow_remote_imports: imports,
@@ -271,7 +275,7 @@ impl<'a, A> Deserializer<'a, A> {
     /// imports, the imported values will not have access to the builtins.
     ///
     /// See also [`with_builtin_type()`].
-    /// [`with_builtin_type()`]: Deserializer::with_builtin_type()
+    /// [`with_builtin_type()`]: `Deserializer::with_builtin_type()`
     ///
     /// # Example
     /// ```
@@ -297,6 +301,7 @@ impl<'a, A> Deserializer<'a, A> {
     ///
     /// assert_eq!(deserialized, Newtype::Bar(0));
     /// ```
+    #[must_use]
     pub fn with_builtin_types(
         mut self,
         tys: impl IntoIterator<Item = (String, SimpleType)>,
@@ -317,7 +322,7 @@ impl<'a, A> Deserializer<'a, A> {
     /// imports, the imported values will not have access to the builtins.
     ///
     /// See also [`with_builtin_types()`].
-    /// [`with_builtin_types()`]: Deserializer::with_builtin_types()
+    /// [`with_builtin_types()`]: `Deserializer::with_builtin_types()`
     ///
     /// # Example
     /// ```
@@ -334,21 +339,22 @@ impl<'a, A> Deserializer<'a, A> {
     /// let data = "Newtype.Bar 0";
     ///
     /// let deserialized = sessiond_serde_dhall::from_str(data)
-    ///   .with_builtin_type("Newtype".to_string(), Newtype::static_type())
+    ///   .with_builtin_type("Newtype", &Newtype::static_type())
     ///   .parse::<Newtype>()
     ///   .unwrap();
     ///
     /// assert_eq!(deserialized, Newtype::Bar(0));
     /// ```
-    pub fn with_builtin_type(mut self, name: String, ty: SimpleType) -> Self {
+    #[must_use]
+    pub fn with_builtin_type(mut self, name: &str, ty: &SimpleType) -> Self {
         self.builtins.insert(
-            sessiond_dhall::syntax::Label::from_str(&name),
+            sessiond_dhall::syntax::Label::from_str(name),
             ty.to_expr(),
         );
         self
     }
 
-    fn _parse<T>(&self) -> sessiond_dhall::error::Result<Result<Value>>
+    fn parse_to_value<T>(&self) -> sessiond_dhall::error::Result<Result<Value>>
     where
         A: TypeAnnot,
         T: HasAnnot<A>,
@@ -401,13 +407,19 @@ impl<'a, A> Deserializer<'a, A> {
     /// ```
     ///
     /// [`StaticType`]: crate::StaticType
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the source fails to read, parse, resolve its
+    /// imports, or typecheck — including against the type annotation, if one
+    /// was given — or if the resulting value does not deserialize into `T`.
     pub fn parse<T>(&self) -> Result<T>
     where
         A: TypeAnnot,
         T: FromDhall + HasAnnot<A>,
     {
         let val = self
-            ._parse::<T>()
+            .parse_to_value::<T>()
             .map_err(ErrorKind::Dhall)
             .map_err(Error)??;
         T::from_dhall(&val)
@@ -447,6 +459,7 @@ impl<'a, A> Deserializer<'a, A> {
 /// ```
 ///
 /// [`parse()`]: Deserializer::parse()
+#[must_use]
 pub fn from_str(s: &str) -> Deserializer<'_, NoAnnot> {
     Deserializer::from_str(s)
 }
@@ -483,6 +496,7 @@ pub fn from_str(s: &str) -> Deserializer<'_, NoAnnot> {
 /// ```
 ///
 /// [`parse()`]: Deserializer::parse()
+#[must_use]
 pub fn from_binary(b: &[u8]) -> Deserializer<'_, NoAnnot> {
     Deserializer::from_binary(b)
 }

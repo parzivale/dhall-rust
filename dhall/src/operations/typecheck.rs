@@ -13,9 +13,8 @@ use crate::syntax::{Const, ExprKind, Span};
 
 fn check_rectymerge(
     span: &Span,
-    env: &TyEnv<'_>,
-    x: Nir<'_>,
-    y: Nir<'_>,
+    x: &Nir<'_>,
+    y: &Nir<'_>,
 ) -> Result<(), TypeError> {
     let not_record_err = || match span {
         Span::DuplicateRecordFieldsSugar(_, r) => {
@@ -24,18 +23,16 @@ fn check_rectymerge(
         _ => mk_span_err(span.clone(), "RecordTypeMergeRequiresRecordType"),
     };
 
-    let kts_x = match x.kind() {
-        NirKind::RecordType(kts) => kts,
-        _ => return not_record_err(),
+    let NirKind::RecordType(kts_x) = x.kind() else {
+        return not_record_err();
     };
-    let kts_y = match y.kind() {
-        NirKind::RecordType(kts) => kts,
-        _ => return not_record_err(),
+    let NirKind::RecordType(kts_y) = y.kind() else {
+        return not_record_err();
     };
     for (k, tx) in kts_x {
         if let Some(ty) = kts_y.get(k) {
             // TODO: store Type in RecordType ?
-            check_rectymerge(span, env, tx.clone(), ty.clone())?;
+            check_rectymerge(span, tx, ty)?;
         }
     }
     Ok(())
@@ -43,15 +40,16 @@ fn check_rectymerge(
 
 fn typecheck_binop<'cx>(
     env: &TyEnv<'cx>,
-    span: Span,
+    span: &Span,
     op: BinOp,
-    l: Tir<'cx, '_>,
-    r: Tir<'cx, '_>,
+    l: &Tir<'cx, '_>,
+    r: &Tir<'cx, '_>,
 ) -> Result<Type<'cx>, TypeError> {
-    let cx = env.cx();
-    let span_err = |msg: &str| mk_span_err(span.clone(), msg);
     use BinOp::*;
     use NirKind::{ListType, RecordType};
+
+    let cx = env.cx();
+    let span_err = |msg: &str| mk_span_err(span.clone(), msg);
 
     Ok(match op {
         RightBiasedRecordMerge => {
@@ -59,14 +57,12 @@ fn typecheck_binop<'cx>(
             let y_type = r.ty();
 
             // Extract the LHS record type
-            let kts_x = match x_type.kind() {
-                RecordType(kts) => kts,
-                _ => return span_err("MustCombineRecord"),
+            let RecordType(kts_x) = x_type.kind() else {
+                return span_err("MustCombineRecord");
             };
             // Extract the RHS record type
-            let kts_y = match y_type.kind() {
-                RecordType(kts) => kts,
-                _ => return span_err("MustCombineRecord"),
+            let RecordType(kts_y) = y_type.kind() else {
+                return span_err("MustCombineRecord");
             };
 
             // Union the two records, prefering
@@ -77,7 +73,7 @@ fn typecheck_binop<'cx>(
             Nir::from_kind(RecordType(kts)).to_type(u)
         }
         RecursiveRecordMerge => {
-            check_rectymerge(&span, env, l.ty().to_nir(), r.ty().to_nir())?;
+            check_rectymerge(span, &l.ty().to_nir(), &r.ty().to_nir())?;
 
             let hir = Hir::new(
                 HirKind::Expr(ExprKind::Op(OpKind::BinOp(
@@ -92,7 +88,7 @@ fn typecheck_binop<'cx>(
             Type::new(hir.eval(env), max(x_u, y_u))
         }
         RecursiveRecordTypeMerge => {
-            check_rectymerge(&span, env, l.eval(env), r.eval(env))?;
+            check_rectymerge(span, &l.eval(env), &r.eval(env))?;
 
             // A RecordType's type is always a const
             let xk = l.ty().as_const().unwrap();
@@ -100,9 +96,8 @@ fn typecheck_binop<'cx>(
             Type::from_const(max(xk, yk))
         }
         ListAppend => {
-            match l.ty().kind() {
-                ListType(..) => {}
-                _ => return span_err("BinOpTypeMismatch"),
+            if !matches!(l.ty().kind(), ListType(..)) {
+                return span_err("BinOpTypeMismatch");
             }
 
             if l.ty() != r.ty() {
@@ -150,20 +145,99 @@ fn typecheck_binop<'cx>(
     })
 }
 
+/// The type a single `merge` handler returns, for the variant it handles.
+///
+/// `variant_type` is the payload the variant carries, or `None` for a variant
+/// that carries nothing — in which case the handler is the return value rather
+/// than a function producing it.
+fn merge_handler_return_type<'cx>(
+    env: &TyEnv<'cx>,
+    span: &Span,
+    record: &Tir<'cx, '_>,
+    scrut: &Tir<'cx, '_>,
+    x: &crate::syntax::Label,
+    handler_type: &Nir<'cx>,
+    variant_type: Option<&Nir<'cx>>,
+) -> Result<Type<'cx>, TypeError> {
+    use NirKind::PiClosure;
+
+    // Union alternative without type
+    let Some(variant_type) = variant_type else {
+        return Type::new_infer_universe(env, handler_type.clone());
+    };
+
+    let PiClosure { closure, annot, .. } = handler_type.kind() else {
+        return mkerr(
+            ErrorBuilder::new(format!("merge handler is not a function"))
+                .span_err(span.clone(), format!("in this merge expression"))
+                .span_err(
+                    record.span(),
+                    format!(
+                        "the handler for `{}` has type: `{}`",
+                        x,
+                        handler_type.to_expr_tyenv(env)
+                    ),
+                )
+                .span_help(
+                    scrut.span(),
+                    format!(
+                        "the corresponding variant has type: `{}`",
+                        variant_type.to_expr_tyenv(env)
+                    ),
+                )
+                .help(format!(
+                    "a handler for this variant must be a function that takes \
+                     an input of type: `{}`",
+                    variant_type.to_expr_tyenv(env)
+                ))
+                .format(),
+        );
+    };
+
+    if variant_type != annot {
+        return mkerr(
+            ErrorBuilder::new(format!("Wrong handler input type"))
+                .span_err(span.clone(), format!("in this merge expression"))
+                .span_err(
+                    record.span(),
+                    format!(
+                        "the handler for `{}` expects a value of type: `{}`",
+                        x,
+                        annot.to_expr_tyenv(env)
+                    ),
+                )
+                .span_err(
+                    scrut.span(),
+                    format!(
+                        "but the corresponding variant has type: `{}`",
+                        variant_type.to_expr_tyenv(env)
+                    ),
+                )
+                .format(),
+        );
+    }
+
+    // TODO: this actually doesn't check anything yet
+    match closure.remove_binder() {
+        Some(v) => Type::new_infer_universe(env, v.clone()),
+        None => mk_span_err(span.clone(), "MergeReturnTypeIsDependent"),
+    }
+}
+
 fn typecheck_merge<'cx>(
     env: &TyEnv<'cx>,
-    span: Span,
+    span: &Span,
     record: &Tir<'cx, '_>,
     scrut: &Tir<'cx, '_>,
     type_annot: Option<&Tir<'cx, '_>>,
 ) -> Result<Type<'cx>, TypeError> {
+    use NirKind::{OptionalType, RecordType, UnionType};
+
     let span_err = |msg: &str| mk_span_err(span.clone(), msg);
-    use NirKind::{OptionalType, PiClosure, RecordType, UnionType};
 
     let record_type = record.ty();
-    let handlers = match record_type.kind() {
-        RecordType(kts) => kts,
-        _ => return span_err("Merge1ArgMustBeRecord"),
+    let RecordType(handlers) = record_type.kind() else {
+        return span_err("Merge1ArgMustBeRecord");
     };
 
     let scrut_type = scrut.ty();
@@ -180,80 +254,18 @@ fn typecheck_merge<'cx>(
 
     let mut inferred_type = None;
     for (x, handler_type) in handlers {
-        let handler_return_type: Type = match variants.get(x) {
-            // Union alternative with type
-            Some(Some(variant_type)) => match handler_type.kind() {
-                PiClosure { closure, annot, .. } => {
-                    if variant_type != annot {
-                        return mkerr(
-                            ErrorBuilder::new(format!(
-                                "Wrong handler input type"
-                            ))
-                            .span_err(
-                                span,
-                                format!("in this merge expression",),
-                            )
-                            .span_err(
-                                record.span(),
-                                format!(
-                                    "the handler for `{}` expects a value of \
-                                     type: `{}`",
-                                    x,
-                                    annot.to_expr_tyenv(env)
-                                ),
-                            )
-                            .span_err(
-                                scrut.span(),
-                                format!(
-                                    "but the corresponding variant has type: \
-                                     `{}`",
-                                    variant_type.to_expr_tyenv(env)
-                                ),
-                            )
-                            .format(),
-                        );
-                    }
-
-                    // TODO: this actually doesn't check anything yet
-                    match closure.remove_binder() {
-                        Some(v) => Type::new_infer_universe(env, v.clone())?,
-                        None => return span_err("MergeReturnTypeIsDependent"),
-                    }
-                }
-                _ => {
-                    return mkerr(
-                        ErrorBuilder::new(format!(
-                            "merge handler is not a function"
-                        ))
-                        .span_err(span, format!("in this merge expression"))
-                        .span_err(
-                            record.span(),
-                            format!(
-                                "the handler for `{}` has type: `{}`",
-                                x,
-                                handler_type.to_expr_tyenv(env)
-                            ),
-                        )
-                        .span_help(
-                            scrut.span(),
-                            format!(
-                                "the corresponding variant has type: `{}`",
-                                variant_type.to_expr_tyenv(env)
-                            ),
-                        )
-                        .help(format!(
-                            "a handler for this variant must be a function \
-                             that takes an input of type: `{}`",
-                            variant_type.to_expr_tyenv(env)
-                        ))
-                        .format(),
-                    );
-                }
-            },
-            // Union alternative without type
-            Some(None) => Type::new_infer_universe(env, handler_type.clone())?,
-            None => return span_err("MergeHandlerMissingVariant"),
+        let Some(variant_type) = variants.get(x) else {
+            return span_err("MergeHandlerMissingVariant");
         };
+        let handler_return_type = merge_handler_return_type(
+            env,
+            span,
+            record,
+            scrut,
+            x,
+            handler_type,
+            variant_type.as_ref(),
+        )?;
         match &inferred_type {
             None => inferred_type = Some(handler_return_type),
             Some(t) => {
@@ -280,72 +292,219 @@ fn typecheck_merge<'cx>(
             }
             t1
         }
-        (Some(t), None) => t,
-        (None, Some(t)) => t,
+        (Some(t), None) | (None, Some(t)) => t,
         (None, None) => return span_err("MergeEmptyNeedsAnnotation"),
     })
 }
 
-pub fn typecheck_operation<'cx>(
+/// Typecheck `f arg`.
+fn typecheck_app<'cx>(
     env: &TyEnv<'cx>,
-    span: Span,
-    opkind: OpKind<Tir<'cx, '_>>,
+    f: &Tir<'cx, '_>,
+    arg: &Tir<'cx, '_>,
 ) -> Result<Type<'cx>, TypeError> {
+    use NirKind::PiClosure;
+
+    // TODO: store Type in closure
+    let PiClosure { annot, closure, .. } = f.ty().kind() else {
+        return mkerr(
+            ErrorBuilder::new(format!(
+                "expected function, found `{}`",
+                f.ty().to_expr_tyenv(env)
+            ))
+            .span_err(
+                f.span(),
+                format!("function application requires a function"),
+            )
+            .format(),
+        );
+    };
+
+    if arg.ty().as_nir() != annot {
+        return mkerr(
+            ErrorBuilder::new(format!("wrong type of function argument"))
+                .span_err(
+                    f.span(),
+                    format!(
+                        "this expects an argument of type: {}",
+                        annot.to_expr_tyenv(env),
+                    ),
+                )
+                .span_err(
+                    arg.span(),
+                    format!(
+                        "but this has type: {}",
+                        arg.ty().to_expr_tyenv(env),
+                    ),
+                )
+                .note(format!(
+                    "expected type `{}`\n   found type `{}`",
+                    annot.to_expr_tyenv(env),
+                    arg.ty().to_expr_tyenv(env),
+                ))
+                .format(),
+        );
+    }
+
+    let arg_nf = arg.eval(env);
+    Type::new_infer_universe(env, closure.apply(arg_nf))
+}
+
+/// Typecheck `toMap record` where `record` has no fields, which is only well
+/// typed if the annotation pins down the map's value type.
+fn typecheck_tomap_empty<'cx>(
+    env: &TyEnv<'cx>,
+    span: &Span,
+    annot: Option<Tir<'cx, '_>>,
+) -> Result<Type<'cx>, TypeError> {
+    use NirKind::{ListType, RecordType};
+
     let cx = env.cx();
     let span_err = |msg: &str| mk_span_err(span.clone(), msg);
-    use NirKind::{ListType, PiClosure, RecordType, UnionType};
-    use OpKind::*;
 
-    Ok(match opkind {
-        App(f, arg) => {
-            match f.ty().kind() {
-                // TODO: store Type in closure
-                PiClosure { annot, closure, .. } => {
-                    if arg.ty().as_nir() != annot {
-                        return mkerr(
-                            ErrorBuilder::new(format!(
-                                "wrong type of function argument"
-                            ))
-                            .span_err(
-                                f.span(),
-                                format!(
-                                    "this expects an argument of type: {}",
-                                    annot.to_expr_tyenv(env),
-                                ),
-                            )
-                            .span_err(
-                                arg.span(),
-                                format!(
-                                    "but this has type: {}",
-                                    arg.ty().to_expr_tyenv(env),
-                                ),
-                            )
-                            .note(format!(
-                                "expected type `{}`\n   found type `{}`",
-                                annot.to_expr_tyenv(env),
-                                arg.ty().to_expr_tyenv(env),
-                            ))
-                            .format(),
-                        );
-                    }
+    let Some(annot) = annot else {
+        return span_err(
+            "`toMap` applied to an empty record requires a type annotation",
+        );
+    };
+    let annot_val = annot.eval_to_type(env)?;
 
-                    let arg_nf = arg.eval(env);
-                    Type::new_infer_universe(env, closure.apply(arg_nf))?
-                }
-                _ => return mkerr(
-                    ErrorBuilder::new(format!(
-                        "expected function, found `{}`",
-                        f.ty().to_expr_tyenv(env)
-                    ))
-                    .span_err(
-                        f.span(),
-                        format!("function application requires a function",),
-                    )
-                    .format(),
-                ),
+    let err_msg = "The type of `toMap x` must be of the form \
+                   `List { mapKey : Text, mapValue : T }`";
+    let ListType(arg) = annot_val.kind() else {
+        return span_err(err_msg);
+    };
+    let RecordType(kts) = arg.kind() else {
+        return span_err(err_msg);
+    };
+    if kts.len() != 2 {
+        return span_err(err_msg);
+    }
+    match kts.get("mapKey") {
+        Some(t) if *t == Nir::from_builtin(cx, Builtin::Text) => {}
+        _ => return span_err(err_msg),
+    }
+    if kts.get("mapValue").is_none() {
+        return span_err(err_msg);
+    }
+    Ok(annot_val)
+}
+
+/// Typecheck `toMap record` where `record` has at least one field. Every field
+/// must share a type, which becomes the map's value type.
+fn typecheck_tomap_nonempty<'cx>(
+    env: &TyEnv<'cx>,
+    span: &Span,
+    kts: &HashMap<crate::syntax::Label, Nir<'cx>>,
+    annot: Option<Tir<'cx, '_>>,
+) -> Result<Type<'cx>, TypeError> {
+    use NirKind::RecordType;
+
+    let cx = env.cx();
+    let span_err = |msg: &str| mk_span_err(span.clone(), msg);
+
+    let entry_type = kts.iter().next().unwrap().1.clone();
+    for t in kts.values() {
+        if *t != entry_type {
+            return span_err(
+                "Every field of the record must have the same type",
+            );
+        }
+    }
+
+    let mut kts = HashMap::new();
+    kts.insert("mapKey".into(), Nir::from_builtin(cx, Builtin::Text));
+    kts.insert("mapValue".into(), entry_type);
+    let output_type: Type = Nir::from_builtin(cx, Builtin::List)
+        .app(Nir::from_kind(RecordType(kts)))
+        .to_type(Const::Type);
+    if let Some(annot) = annot {
+        let annot_val = annot.eval_to_type(env)?;
+        if output_type != annot_val {
+            return span_err("Annotation mismatch");
+        }
+    }
+    Ok(output_type)
+}
+
+/// Typecheck `scrut.x`, which selects a record field or a union constructor.
+fn typecheck_field<'cx>(
+    env: &TyEnv<'cx>,
+    span: &Span,
+    scrut: &Tir<'cx, '_>,
+    x: &crate::syntax::Label,
+) -> Result<Type<'cx>, TypeError> {
+    use NirKind::{PiClosure, RecordType, UnionType};
+
+    let span_err = |msg: &str| mk_span_err(span.clone(), msg);
+
+    match scrut.ty().kind() {
+        RecordType(kts) => match kts.get(x) {
+            Some(val) => Type::new_infer_universe(env, val.clone()),
+            None => span_err("MissingRecordField"),
+        },
+        NirKind::Const(_) => {
+            let scrut = scrut.eval_to_type(env)?;
+            let UnionType(kts) = scrut.kind() else {
+                return span_err("NotARecord");
+            };
+            match kts.get(x) {
+                // Constructor has type T -> < x: T, ... >
+                Some(Some(ty)) => Ok(Nir::from_kind(PiClosure {
+                    binder: Binder::new(x.clone()),
+                    annot: ty.clone(),
+                    closure: Closure::new_constant(scrut.to_nir()),
+                })
+                .to_type(scrut.ty())),
+                Some(None) => Ok(scrut),
+                None => span_err("MissingUnionField"),
             }
         }
-        BinOp(o, l, r) => typecheck_binop(env, span, o, l, r)?,
+        _ => span_err("NotARecord"),
+    }
+}
+
+/// Typecheck `record with a.b.c = expr`.
+fn typecheck_with<'cx>(
+    env: &TyEnv<'cx>,
+    span: &Span,
+    record: Tir<'cx, '_>,
+    labels: Vec<crate::syntax::Label>,
+    expr: Tir<'cx, '_>,
+) -> Result<Type<'cx>, TypeError> {
+    use NirKind::RecordType;
+
+    let mut record_ty = record.into_ty().into_nir();
+    let mut current = &mut record_ty;
+    // We dig through the current record type with the provided labels.
+    for label in labels {
+        let RecordType(kts) = current.kind_mut() else {
+            return mk_span_err(span.clone(), "WithMustBeRecord");
+        };
+        // Get existing entry or insert empty record type into it.
+        current = kts
+            .entry(label)
+            .or_insert_with(|| Nir::from_kind(RecordType(HashMap::new())));
+    }
+    *current = expr.into_ty().into_nir();
+
+    Type::new_infer_universe(env, record_ty)
+}
+
+pub fn typecheck_operation<'cx>(
+    env: &TyEnv<'cx>,
+    span: &Span,
+    opkind: OpKind<Tir<'cx, '_>>,
+) -> Result<Type<'cx>, TypeError> {
+    use NirKind::RecordType;
+    use OpKind::*;
+
+    let cx = env.cx();
+    let span_err = |msg: &str| mk_span_err(span.clone(), msg);
+
+    Ok(match opkind {
+        App(f, arg) => typecheck_app(env, &f, &arg)?,
+        BinOp(o, l, r) => typecheck_binop(env, span, o, &l, &r)?,
         BoolIf(x, y, z) => {
             if *x.ty().kind() != NirKind::from_builtin(cx, Builtin::Bool) {
                 return span_err("InvalidPredicate");
@@ -367,107 +526,21 @@ pub fn typecheck_operation<'cx>(
                 return span_err("`toMap` only accepts records of type `Type`");
             }
             let record_t = record.ty();
-            let kts = match record_t.kind() {
-                RecordType(kts) => kts,
-                _ => {
-                    return span_err(
-                        "The argument to `toMap` must be a record",
-                    );
-                }
+            let RecordType(kts) = record_t.kind() else {
+                return span_err("The argument to `toMap` must be a record");
             };
 
             if kts.is_empty() {
-                let annot = if let Some(annot) = annot {
-                    annot
-                } else {
-                    return span_err(
-                        "`toMap` applied to an empty record requires a type \
-                         annotation",
-                    );
-                };
-                let annot_val = annot.eval_to_type(env)?;
-
-                let err_msg = "The type of `toMap x` must be of the form \
-                               `List { mapKey : Text, mapValue : T }`";
-                let arg = match annot_val.kind() {
-                    ListType(t) => t,
-                    _ => return span_err(err_msg),
-                };
-                let kts = match arg.kind() {
-                    RecordType(kts) => kts,
-                    _ => return span_err(err_msg),
-                };
-                if kts.len() != 2 {
-                    return span_err(err_msg);
-                }
-                match kts.get("mapKey") {
-                    Some(t) if *t == Nir::from_builtin(cx, Builtin::Text) => {}
-                    _ => return span_err(err_msg),
-                }
-                match kts.get("mapValue") {
-                    Some(_) => {}
-                    None => return span_err(err_msg),
-                }
-                annot_val
+                typecheck_tomap_empty(env, span, annot)?
             } else {
-                let entry_type = kts.iter().next().unwrap().1.clone();
-                for (_, t) in kts.iter() {
-                    if *t != entry_type {
-                        return span_err(
-                            "Every field of the record must have the same type",
-                        );
-                    }
-                }
-
-                let mut kts = HashMap::new();
-                kts.insert(
-                    "mapKey".into(),
-                    Nir::from_builtin(cx, Builtin::Text),
-                );
-                kts.insert("mapValue".into(), entry_type);
-                let output_type: Type = Nir::from_builtin(cx, Builtin::List)
-                    .app(Nir::from_kind(RecordType(kts)))
-                    .to_type(Const::Type);
-                if let Some(annot) = annot {
-                    let annot_val = annot.eval_to_type(env)?;
-                    if output_type != annot_val {
-                        return span_err("Annotation mismatch");
-                    }
-                }
-                output_type
+                typecheck_tomap_nonempty(env, span, kts, annot)?
             }
         }
-        Field(scrut, x) => {
-            match scrut.ty().kind() {
-                RecordType(kts) => match kts.get(&x) {
-                    Some(val) => Type::new_infer_universe(env, val.clone())?,
-                    None => return span_err("MissingRecordField"),
-                },
-                NirKind::Const(_) => {
-                    let scrut = scrut.eval_to_type(env)?;
-                    match scrut.kind() {
-                        UnionType(kts) => match kts.get(&x) {
-                            // Constructor has type T -> < x: T, ... >
-                            Some(Some(ty)) => Nir::from_kind(PiClosure {
-                                binder: Binder::new(x.clone()),
-                                annot: ty.clone(),
-                                closure: Closure::new_constant(scrut.to_nir()),
-                            })
-                            .to_type(scrut.ty()),
-                            Some(None) => scrut,
-                            None => return span_err("MissingUnionField"),
-                        },
-                        _ => return span_err("NotARecord"),
-                    }
-                }
-                _ => return span_err("NotARecord"),
-            }
-        }
+        Field(scrut, x) => typecheck_field(env, span, &scrut, &x)?,
         Projection(record, labels) => {
             let record_type = record.ty();
-            let kts = match record_type.kind() {
-                RecordType(kts) => kts,
-                _ => return span_err("ProjectionMustBeRecord"),
+            let RecordType(kts) = record_type.kind() else {
+                return span_err("ProjectionMustBeRecord");
             };
 
             let mut new_kts = HashMap::new();
@@ -477,22 +550,20 @@ pub fn typecheck_operation<'cx>(
                     Some(t) => {
                         new_kts.insert(l.clone(), t.clone());
                     }
-                };
+                }
             }
 
             Type::new_infer_universe(env, Nir::from_kind(RecordType(new_kts)))?
         }
         ProjectionByExpr(record, selection) => {
             let record_type = record.ty();
-            let rec_kts = match record_type.kind() {
-                RecordType(kts) => kts,
-                _ => return span_err("ProjectionMustBeRecord"),
+            let RecordType(rec_kts) = record_type.kind() else {
+                return span_err("ProjectionMustBeRecord");
             };
 
             let selection_val = selection.eval_to_type(env)?;
-            let sel_kts = match selection_val.kind() {
-                RecordType(kts) => kts,
-                _ => return span_err("ProjectionByExprTakesRecordType"),
+            let RecordType(sel_kts) = selection_val.kind() else {
+                return span_err("ProjectionByExprTakesRecordType");
             };
 
             for (l, sel_ty) in sel_kts {
@@ -509,22 +580,7 @@ pub fn typecheck_operation<'cx>(
             selection_val
         }
         With(record, labels, expr) => {
-            let mut record_ty = record.into_ty().into_nir();
-            let mut current = &mut record_ty;
-            // We dig through the current record type with the provided labels.
-            for label in labels {
-                if let RecordType(kts) = current.kind_mut() {
-                    // Get existing entry or insert empty record type into it.
-                    current = kts.entry(label).or_insert_with(|| {
-                        Nir::from_kind(RecordType(HashMap::new()))
-                    });
-                } else {
-                    return mk_span_err(span.clone(), "WithMustBeRecord");
-                }
-            }
-            *current = expr.into_ty().into_nir();
-
-            Type::new_infer_universe(env, record_ty)?
+            typecheck_with(env, span, record, labels, expr)?
         }
         Completion(..) => {
             unreachable!("This case should have been handled in resolution")

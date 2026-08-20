@@ -1,5 +1,5 @@
 #![doc(html_root_url = "https://docs.rs/sessiond-dhall-proc-macros/1.0.1")]
-#![allow(clippy::unnecessary_wraps)]
+#![expect(clippy::unnecessary_wraps)]
 //! This crate contains the code-generation primitives for the [dhall-rust][dhall-rust] crate.
 //! This is highly unstable and breaks regularly; use at your own risk.
 //!

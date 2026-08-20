@@ -28,6 +28,7 @@ pub enum Const {
 }
 
 impl Const {
+    #[must_use]
     pub fn to_universe(self) -> Universe {
         Universe::from_const(self)
     }
@@ -36,7 +37,7 @@ impl Const {
 /// Bound variable
 ///
 /// The `Label` field is the variable's name (i.e. \"`x`\").
-/// The `Int` field is a DeBruijn index.
+/// The `Int` field is a `DeBruijn` index.
 /// See dhall-lang/standard/semantics.md for details
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct V(pub Label, pub usize);
@@ -164,16 +165,20 @@ impl<SE> ExprKind<SE> {
 }
 
 impl Expr {
+    #[must_use]
     pub fn as_ref(&self) -> &UnspannedExpr {
         &self.kind
     }
+    #[must_use]
     pub fn kind(&self) -> &UnspannedExpr {
         &self.kind
     }
+    #[must_use]
     pub fn span(&self) -> Span {
         self.span.clone()
     }
 
+    #[must_use]
     pub fn new(kind: UnspannedExpr, span: Span) -> Self {
         Expr {
             kind: Box::new(kind),
@@ -188,6 +193,7 @@ impl Expr {
     }
 
     /// Wrap the expression into an additional let-binding
+    #[must_use]
     pub fn add_let_binding(self, label: Label, value: Expr) -> Expr {
         Expr::new(ExprKind::Let(label, None, value, self), Span::Artificial)
     }
@@ -215,7 +221,7 @@ impl std::hash::Hash for NaiveDouble {
     where
         H: std::hash::Hasher,
     {
-        self.0.to_bits().hash(state)
+        self.0.to_bits().hash(state);
     }
 }
 
@@ -250,6 +256,6 @@ impl std::hash::Hash for Expr {
     where
         H: std::hash::Hasher,
     {
-        self.kind.hash(state)
+        self.kind.hash(state);
     }
 }

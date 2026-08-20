@@ -1,3 +1,7 @@
+// Each test defines the types it exercises next to the assertions that use
+// them, which reads better than hoisting every one to the top of the file.
+#![expect(clippy::items_after_statements)]
+
 mod simple_value {
     use serde::{Deserialize, Serialize};
     use sessiond_serde_dhall::{
@@ -10,12 +14,12 @@ mod simple_value {
     {
         assert_eq!(from_str(s).parse::<T>().map_err(|e| e.to_string()), Ok(x));
     }
-    fn assert_ser<T>(s: &str, x: T)
+    fn assert_ser<T>(s: &str, x: &T)
     where
         T: ToDhall + PartialEq + std::fmt::Debug,
     {
         assert_eq!(
-            serialize(&x).to_string().map_err(|e| e.to_string()),
+            serialize(x).to_string().map_err(|e| e.to_string()),
             Ok(s.to_string())
         );
     }
@@ -23,8 +27,8 @@ mod simple_value {
     where
         T: ToDhall + FromDhall + PartialEq + std::fmt::Debug + Clone,
     {
-        assert_de(s, x.clone());
-        assert_ser(s, x);
+        assert_ser(s, &x);
+        assert_de(s, x);
     }
 
     #[test]
@@ -62,8 +66,7 @@ mod simple_value {
                 .parse::<Value>()
                 .map_err(|e| e.to_string()),
             Err(format!(
-                "this is neither a simple type nor a simple value: {}",
-                not_simple
+                "this is neither a simple type nor a simple value: {not_simple}"
             ))
         );
     }

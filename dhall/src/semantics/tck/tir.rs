@@ -24,6 +24,7 @@ pub struct Tir<'cx, 'hir> {
 }
 
 impl Universe {
+    #[must_use]
     pub fn from_const(c: Const) -> Self {
         Universe(match c {
             Const::Type => 0,
@@ -31,6 +32,7 @@ impl Universe {
             Const::Sort => 2,
         })
     }
+    #[must_use]
     pub fn as_const(self) -> Option<Const> {
         match self.0 {
             0 => Some(Const::Type),
@@ -39,18 +41,20 @@ impl Universe {
             _ => None,
         }
     }
+    #[must_use]
     pub fn next(self) -> Self {
         Universe(self.0 + 1)
     }
 }
 
 impl<'cx> Type<'cx> {
+    #[must_use]
     pub fn new(val: Nir<'cx>, univ: Universe) -> Self {
         Type { val, univ }
     }
     /// Creates a new Type and infers its universe by re-typechecking its value.
-    /// TODO: ideally avoid this function altogether. Would need to store types in RecordType and
-    /// PiClosure.
+    /// TODO: ideally avoid this function altogether. Would need to store types in `RecordType` and
+    /// `PiClosure`.
     pub fn new_infer_universe(
         env: &TyEnv<'cx>,
         val: Nir<'cx>,
@@ -65,9 +69,11 @@ impl<'cx> Type<'cx> {
         };
         Ok(Type::new(val, u))
     }
+    #[must_use]
     pub fn from_const(c: Const) -> Self {
         Self::new(Nir::from_const(c), c.to_universe().next())
     }
+    #[must_use]
     pub fn from_builtin(cx: Ctxt<'cx>, b: Builtin) -> Self {
         use Builtin::*;
         match b {
@@ -79,55 +85,70 @@ impl<'cx> Type<'cx> {
     }
 
     /// Get the type of this type
+    #[must_use]
     pub fn ty(&self) -> Universe {
         self.univ
     }
 
+    #[must_use]
     pub fn to_nir(&self) -> Nir<'cx> {
         self.val.clone()
     }
+    #[must_use]
     pub fn as_nir(&self) -> &Nir<'cx> {
         &self.val
     }
+    #[must_use]
     pub fn into_nir(self) -> Nir<'cx> {
         self.val
     }
+    #[must_use]
     pub fn as_const(&self) -> Option<Const> {
         self.val.as_const()
     }
+    #[must_use]
     pub fn kind(&self) -> &NirKind<'cx> {
         self.val.kind()
     }
 
+    #[must_use]
     pub fn to_hir(&self, venv: VarEnv) -> Hir<'cx> {
         self.val.to_hir(venv)
     }
+    #[must_use]
     pub fn to_expr_tyenv(&self, tyenv: &TyEnv<'cx>) -> Expr {
         self.val.to_hir(tyenv.as_varenv()).to_expr_tyenv(tyenv)
     }
 }
 
 impl<'cx, 'hir> Tir<'cx, 'hir> {
+    #[must_use]
     pub fn from_hir(hir: &'hir Hir<'cx>, ty: Type<'cx>) -> Self {
         Tir { hir, ty }
     }
 
+    #[must_use]
     pub fn span(&self) -> Span {
         self.as_hir().span()
     }
+    #[must_use]
     pub fn ty(&self) -> &Type<'cx> {
         &self.ty
     }
+    #[must_use]
     pub fn into_ty(self) -> Type<'cx> {
         self.ty
     }
 
+    #[must_use]
     pub fn to_hir(&self) -> Hir<'cx> {
         self.as_hir().clone()
     }
+    #[must_use]
     pub fn as_hir(&self) -> &'hir Hir<'cx> {
         self.hir
     }
+    #[must_use]
     pub fn to_expr_tyenv(&self, env: &TyEnv<'cx>) -> Expr {
         self.as_hir().to_expr_tyenv(env)
     }

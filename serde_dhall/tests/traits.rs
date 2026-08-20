@@ -1,3 +1,7 @@
+// Each test defines the types it exercises next to the assertions that use
+// them, which reads better than hoisting every one to the top of the file.
+#![expect(clippy::items_after_statements)]
+
 use sessiond_serde_dhall::{SimpleType, StaticType, from_str};
 
 #[test]
@@ -15,7 +19,7 @@ fn test_static_type() {
     );
 
     #[derive(sessiond_serde_dhall::StaticType)]
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     struct A {
         field1: bool,
         field2: Option<bool>,
@@ -26,7 +30,7 @@ fn test_static_type() {
     );
 
     #[derive(StaticType)]
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     struct B<'a, T: 'a> {
         field1: &'a T,
         field2: Option<T>,
@@ -34,7 +38,7 @@ fn test_static_type() {
     assert_eq!(<B<'static, bool>>::static_type(), A::static_type());
 
     #[derive(StaticType)]
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     struct C<T>(T, Option<String>);
     assert_eq!(
         <C<bool>>::static_type(),
@@ -42,7 +46,6 @@ fn test_static_type() {
     );
 
     #[derive(StaticType)]
-    #[allow(dead_code)]
     struct D();
     assert_eq!(
         <C<D>>::static_type(),
@@ -50,7 +53,7 @@ fn test_static_type() {
     );
 
     #[derive(StaticType)]
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     enum E<T> {
         A(T),
         B(String),
@@ -58,7 +61,7 @@ fn test_static_type() {
     assert_eq!(<E<bool>>::static_type(), parse("< A: Bool | B: Text >"));
 
     #[derive(StaticType)]
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     enum F {
         A,
         B(bool),
@@ -66,7 +69,7 @@ fn test_static_type() {
     assert_eq!(F::static_type(), parse("< A | B: Bool >"));
 
     #[derive(StaticType)]
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     enum G {
         A,
         B(bool),
@@ -75,5 +78,5 @@ fn test_static_type() {
     assert_eq!(
         G::static_type(),
         parse("< A | B: Bool | C: { a: Bool, b: Natural } >")
-    )
+    );
 }

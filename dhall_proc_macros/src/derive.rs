@@ -143,7 +143,7 @@ pub fn derive_static_type_inner(
     let assertions = constraints.iter().enumerate().map(|(i, ty)| {
         // Ensure that ty: StaticType, with an appropriate span
         let assert_name =
-            syn::Ident::new(&format!("_AssertType{}", i), ty.span());
+            syn::Ident::new(&format!("_AssertType{i}"), ty.span());
         let mut local_where_clause = orig_where_clause.clone();
         local_where_clause
             .predicates
@@ -156,7 +156,7 @@ pub fn derive_static_type_inner(
                 lifetime,
                 ..
             }) => quote!(&#lifetime ()),
-            _ => unimplemented!(),
+            syn::GenericParam::Const(_) => unimplemented!(),
         });
         quote_spanned! {ty.span()=>
             struct #assert_name #impl_generics #local_where_clause {
@@ -167,7 +167,7 @@ pub fn derive_static_type_inner(
 
     // Ensure that all the fields have a StaticType impl
     let mut where_clause = orig_where_clause.clone();
-    for ty in constraints.iter() {
+    for ty in &constraints {
         where_clause
             .predicates
             .push(parse_quote!(#ty: ::sessiond_serde_dhall::StaticType));

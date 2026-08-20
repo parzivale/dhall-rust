@@ -11,7 +11,7 @@ pub struct AlphaVar {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HirKind<'cx> {
-    /// A resolved variable (i.e. a DeBruijn index)
+    /// A resolved variable (i.e. a `DeBruijn` index)
     Var(AlphaVar),
     /// A variable that couldn't be resolved. Detected during resolution, but causes an error during typeck.
     MissingVar(V),
@@ -31,15 +31,18 @@ pub struct Hir<'cx> {
 }
 
 impl AlphaVar {
+    #[must_use]
     pub fn new(idx: usize) -> Self {
         AlphaVar { idx }
     }
+    #[must_use]
     pub fn idx(self) -> usize {
         self.idx
     }
 }
 
 impl<'cx> Hir<'cx> {
+    #[must_use]
     pub fn new(kind: HirKind<'cx>, span: Span) -> Self {
         Hir {
             kind: Box::new(kind),
@@ -47,26 +50,32 @@ impl<'cx> Hir<'cx> {
         }
     }
 
+    #[must_use]
     pub fn kind(&self) -> &HirKind<'cx> {
-        &*self.kind
+        &self.kind
     }
+    #[must_use]
     pub fn span(&self) -> Span {
         self.span.clone()
     }
 
     /// Converts a closed Hir expr back to the corresponding AST expression.
+    #[must_use]
     pub fn to_expr(&self, cx: Ctxt<'cx>, opts: ToExprOptions) -> Expr {
         hir_to_expr(cx, self, opts, &mut NameEnv::new())
     }
     /// Converts a closed Hir expr back to the corresponding AST expression.
+    #[must_use]
     pub fn to_expr_noopts(&self, cx: Ctxt<'cx>) -> Expr {
         let opts = ToExprOptions { alpha: false };
         self.to_expr(cx, opts)
     }
+    #[must_use]
     pub fn to_expr_alpha(&self, cx: Ctxt<'cx>) -> Expr {
         let opts = ToExprOptions { alpha: true };
         self.to_expr(cx, opts)
     }
+    #[must_use]
     pub fn to_expr_tyenv(&self, env: &TyEnv<'cx>) -> Expr {
         let opts = ToExprOptions { alpha: false };
         let cx = env.cx();
@@ -94,6 +103,7 @@ impl<'cx> Hir<'cx> {
     }
     /// Eval a closed Hir (i.e. without free variables). It will actually get evaluated only as
     /// needed on demand.
+    #[must_use]
     pub fn eval_closed_expr(&self, cx: Ctxt<'cx>) -> Nir<'cx> {
         self.eval(NzEnv::new(cx))
     }
@@ -155,9 +165,9 @@ fn hir_to_expr<'cx>(
     Expr::new(kind, hir.span())
 }
 
-impl<'cx> std::cmp::PartialEq for Hir<'cx> {
+impl std::cmp::PartialEq for Hir<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.kind == other.kind
     }
 }
-impl<'cx> std::cmp::Eq for Hir<'cx> {}
+impl std::cmp::Eq for Hir<'_> {}

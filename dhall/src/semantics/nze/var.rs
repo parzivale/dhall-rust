@@ -8,9 +8,11 @@ pub struct Binder {
 }
 
 impl Binder {
+    #[must_use]
     pub fn new(name: Label) -> Self {
         Binder { name }
     }
+    #[must_use]
     pub fn to_label(&self) -> Label {
         self.clone().into()
     }

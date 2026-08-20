@@ -5,6 +5,7 @@ use std::path::Path;
 use crate::error::Error;
 
 // Compute the sha256 hash of a bitstring.
+#[must_use]
 pub fn sha256_hash(data: &[u8]) -> Box<[u8]> {
     use sha2::Digest;
     sha2::Sha256::digest(data).as_slice().into()

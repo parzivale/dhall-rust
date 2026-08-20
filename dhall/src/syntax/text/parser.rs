@@ -1,9 +1,18 @@
+// The pest parser is `include!`d from OUT_DIR further down, so lints against
+// the code pest generates land in this module and cannot be fixed at source.
+#![expect(
+    clippy::elidable_lifetime_names,
+    clippy::must_use_candidate,
+    clippy::redundant_closure_for_method_calls
+)]
+
 use itertools::Itertools;
 use pest::prec_climber as pcl;
 use pest::prec_climber::PrecClimber;
 use std::collections::{BTreeMap, BTreeSet};
 use std::iter::once;
 use std::rc::Rc;
+use std::sync::LazyLock;
 
 use num_traits::ToPrimitive;
 use pest_consume::{Parser, match_nodes};
@@ -36,19 +45,19 @@ enum Selector {
     ProjectionByExpr(Expr),
 }
 
-fn input_to_span(input: ParseInput) -> Span {
+fn input_to_span(input: &ParseInput) -> Span {
     Span::make(input.user_data().clone(), input.as_pair().as_span())
 }
-fn spanned(input: ParseInput, x: UnspannedExpr) -> Expr {
+fn spanned(input: &ParseInput, x: UnspannedExpr) -> Expr {
     Expr::new(x, input_to_span(input))
 }
-fn spanned_union(span1: Span, span2: Span, x: UnspannedExpr) -> Expr {
-    Expr::new(x, span1.union(&span2))
+fn spanned_union(span1: &Span, span2: &Span, x: UnspannedExpr) -> Expr {
+    Expr::new(x, span1.union(span2))
 }
 
 // Trim the shared indent off of a vec of lines, as defined by the Dhall semantics of multiline
 // literals.
-fn trim_indent(lines: &mut Vec<ParsedText>) {
+fn trim_indent(lines: &mut [ParsedText]) {
     let is_indent = |c: char| c == ' ' || c == '\t';
 
     // There is at least one line so this is safe
@@ -56,10 +65,9 @@ fn trim_indent(lines: &mut Vec<ParsedText>) {
     let indent_chars = last_line_head
         .char_indices()
         .take_while(|(_, c)| is_indent(*c));
-    let mut min_indent_idx = match indent_chars.last() {
-        Some((i, _)) => i,
-        // If there is no indent char, then no indent needs to be stripped
-        None => return,
+    // If there is no indent char, then no indent needs to be stripped
+    let Some((mut min_indent_idx, _)) = indent_chars.last() else {
+        return;
     };
 
     for line in lines.iter() {
@@ -76,7 +84,7 @@ fn trim_indent(lines: &mut Vec<ParsedText>) {
             Some(((i, _), _)) => min_indent_idx = i,
             // If there is no indent char, then no indent needs to be stripped
             None => return,
-        };
+        }
     }
 
     // Remove the shared indent from non-empty lines
@@ -87,7 +95,7 @@ fn trim_indent(lines: &mut Vec<ParsedText>) {
     }
 }
 
-/// Insert the expr into the map; in case of collision, create a RecursiveRecordMerge node.
+/// Insert the expr into the map; in case of collision, create a `RecursiveRecordMerge` node.
 fn insert_recordlit_entry(map: &mut BTreeMap<Label, Expr>, l: Label, e: Expr) {
     use crate::operations::BinOp::RecursiveRecordMerge;
     use std::collections::btree_map::Entry;
@@ -110,33 +118,31 @@ fn insert_recordlit_entry(map: &mut BTreeMap<Label, Expr>, l: Label, e: Expr) {
     }
 }
 
-lazy_static::lazy_static! {
-    static ref PRECCLIMBER: PrecClimber<Rule> = {
-        use Rule::*;
-        // In order of precedence
-        let operators = vec![
-            equivalent,
-            import_alt,
-            bool_or,
-            natural_plus,
-            text_append,
-            list_append,
-            bool_and,
-            combine,
-            prefer,
-            combine_types,
-            natural_times,
-            bool_eq,
-            bool_ne,
-        ];
-        PrecClimber::new(
-            operators
-                .into_iter()
-                .map(|op| pcl::Operator::new(op, pcl::Assoc::Left))
-                .collect(),
-        )
-    };
-}
+static PRECCLIMBER: LazyLock<PrecClimber<Rule>> = LazyLock::new(|| {
+    use Rule::*;
+    // In order of precedence
+    let operators = vec![
+        equivalent,
+        import_alt,
+        bool_or,
+        natural_plus,
+        text_append,
+        list_append,
+        bool_and,
+        combine,
+        prefer,
+        combine_types,
+        natural_times,
+        bool_eq,
+        bool_ne,
+    ];
+    PrecClimber::new(
+        operators
+            .into_iter()
+            .map(|op| pcl::Operator::new(op, pcl::Assoc::Left))
+            .collect(),
+    )
+});
 
 // Generate pest parser manually because otherwise we'd need to modify something outside of OUT_DIR
 // and that's forbidden by docs.rs.
@@ -150,7 +156,7 @@ include!(concat!(env!("OUT_DIR"), "/dhall_parser.rs"));
 
 #[pest_consume::parser(parser = DhallParser, rule = Rule)]
 impl DhallParser {
-    fn EOI(_input: ParseInput) -> ParseResult<()> {
+    fn EOI(input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
 
@@ -167,7 +173,7 @@ impl DhallParser {
     fn any_label_or_some(input: ParseInput) -> ParseResult<Label> {
         Ok(match_nodes!(input.into_children();
             [label(l)] => l,
-            [Some_(_)] => Label::from("Some"),
+            [Some_(())] => Label::from("Some"),
         ))
     }
 
@@ -222,8 +228,7 @@ impl DhallParser {
                 }
 
                 // pad with zeroes
-                let s: String = std::iter::repeat('0')
-                    .take(8 - s.len())
+                let s: String = std::iter::repeat_n('0', 8 - s.len())
                     .chain(s.chars())
                     .collect();
 
@@ -290,15 +295,15 @@ impl DhallParser {
             }
         ))
     }
-    fn single_quote_char(input: ParseInput) -> ParseResult<&str> {
+    fn single_quote_char(input: ParseInput<'_>) -> ParseResult<&str> {
         Ok(input.as_str())
     }
     #[alias(single_quote_char)]
-    fn escaped_quote_pair(_input: ParseInput) -> ParseResult<&str> {
+    fn escaped_quote_pair(input: ParseInput<'_>) -> ParseResult<&str> {
         Ok("''")
     }
     #[alias(single_quote_char)]
-    fn escaped_interpolation(_input: ParseInput) -> ParseResult<&str> {
+    fn escaped_interpolation(input: ParseInput<'_>) -> ParseResult<&str> {
         Ok("${")
     }
 
@@ -343,37 +348,35 @@ impl DhallParser {
                 "Sort" => Const(crate::syntax::Const::Sort),
                 _ => {
                     return Err(
-                        input.error(format!("Unrecognized builtin: '{}'", s))
+                        input.error(format!("Unrecognized builtin: '{s}'"))
                     );
                 }
             },
         };
-        Ok(spanned(input, e))
+        Ok(spanned(&input, e))
     }
 
     #[alias(double_literal)]
-    fn NaN(_input: ParseInput) -> ParseResult<Double> {
-        Ok(std::f64::NAN.into())
+    fn NaN(input: ParseInput) -> ParseResult<Double> {
+        Ok(f64::NAN.into())
     }
     #[alias(double_literal)]
-    fn minus_infinity_literal(_input: ParseInput) -> ParseResult<Double> {
-        Ok(std::f64::NEG_INFINITY.into())
+    fn minus_infinity_literal(input: ParseInput) -> ParseResult<Double> {
+        Ok(f64::NEG_INFINITY.into())
     }
     #[alias(double_literal)]
-    fn plus_infinity_literal(_input: ParseInput) -> ParseResult<Double> {
-        Ok(std::f64::INFINITY.into())
+    fn plus_infinity_literal(input: ParseInput) -> ParseResult<Double> {
+        Ok(f64::INFINITY.into())
     }
 
     #[alias(double_literal)]
     fn numeric_double_literal(input: ParseInput) -> ParseResult<Double> {
         let s = input.as_str().trim();
         match s.parse::<f64>() {
-            Ok(x) if x.is_infinite() => Err(input.error(format!(
-                "Overflow while parsing double literal '{}'",
-                s
-            ))),
+            Ok(x) if x.is_infinite() => Err(input
+                .error(format!("Overflow while parsing double literal '{s}'"))),
             Ok(x) => Ok(NaiveDouble::from(x)),
-            Err(e) => Err(input.error(format!("{}", e))),
+            Err(e) => Err(input.error(format!("{e}"))),
         }
     }
 
@@ -381,11 +384,10 @@ impl DhallParser {
         let s = input.as_str().trim();
         if s.starts_with("0x") {
             let without_prefix = s.trim_start_matches("0x");
-            Natural::parse_bytes(without_prefix.as_bytes(), 16).ok_or_else(
-                || input.error(format!("invalid hex Natural: {}", s)),
-            )
+            Natural::parse_bytes(without_prefix.as_bytes(), 16)
+                .ok_or_else(|| input.error(format!("invalid hex Natural: {s}")))
         } else {
-            s.parse().map_err(|e| input.error(format!("{}", e)))
+            s.parse().map_err(|e| input.error(format!("{e}")))
         }
     }
 
@@ -395,18 +397,17 @@ impl DhallParser {
         if rest.starts_with("0x") {
             let without_prefix =
                 sign.to_owned() + rest.trim_start_matches("0x");
-            Integer::parse_bytes(without_prefix.as_bytes(), 16).ok_or_else(
-                || input.error(format!("invalid hex Integer: {}", s)),
-            )
+            Integer::parse_bytes(without_prefix.as_bytes(), 16)
+                .ok_or_else(|| input.error(format!("invalid hex Integer: {s}")))
         } else {
-            s.parse().map_err(|e| input.error(format!("{}", e)))
+            s.parse().map_err(|e| input.error(format!("{e}")))
         }
     }
 
     #[alias(expression, shortcut = true)]
     fn identifier(input: ParseInput) -> ParseResult<Expr> {
         Ok(match_nodes!(input.children();
-            [variable(v)] => spanned(input, Var(v)),
+            [variable(v)] => spanned(&input, Var(v)),
             [expression(e)] => e,
         ))
     }
@@ -528,7 +529,7 @@ impl DhallParser {
                 let mut file_path: Vec<_> = segments.collect();
                 // An empty path normalizes to "/"
                 if file_path.is_empty() {
-                    file_path = vec!["".to_owned()];
+                    file_path = vec![String::new()];
                 }
                 FilePath { file_path }
             }
@@ -574,7 +575,7 @@ impl DhallParser {
         ))
     }
     fn posix_environment_variable_character(
-        input: ParseInput,
+        input: ParseInput<'_>,
     ) -> ParseResult<&str> {
         Ok(match input.as_str() {
             "\\\"" => "\"",
@@ -591,7 +592,7 @@ impl DhallParser {
     }
 
     #[alias(import_type)]
-    fn missing(_input: ParseInput) -> ParseResult<ImportTarget<Expr>> {
+    fn missing(input: ParseInput) -> ParseResult<ImportTarget<Expr>> {
         Ok(ImportTarget::Missing)
     }
 
@@ -601,7 +602,7 @@ impl DhallParser {
         let hash = &s[7..];
         if protocol != "sha256" {
             return Err(
-                input.error(format!("Unknown hashing protocol '{}'", protocol))
+                input.error(format!("Unknown hashing protocol '{protocol}'"))
             );
         }
         Ok(Hash::SHA256(hex::decode(hash).unwrap().into()))
@@ -619,11 +620,11 @@ impl DhallParser {
     }
 
     #[alias(import_mode)]
-    fn Text(_input: ParseInput) -> ParseResult<ImportMode> {
+    fn Text(input: ParseInput) -> ParseResult<ImportMode> {
         Ok(ImportMode::RawText)
     }
     #[alias(import_mode)]
-    fn Location(_input: ParseInput) -> ParseResult<ImportMode> {
+    fn Location(input: ParseInput) -> ParseResult<ImportMode> {
         Ok(ImportMode::Location)
     }
 
@@ -638,35 +639,35 @@ impl DhallParser {
                 Import { mode, ..imp }
             },
         );
-        Ok(spanned(input, Import(import)))
+        Ok(spanned(&input, Import(import)))
     }
 
-    fn lambda(_input: ParseInput) -> ParseResult<()> {
+    fn lambda(input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
-    fn forall(_input: ParseInput) -> ParseResult<()> {
+    fn forall(input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
-    fn arrow(_input: ParseInput) -> ParseResult<()> {
+    fn arrow(input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
-    fn merge(_input: ParseInput) -> ParseResult<()> {
+    fn merge(input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
-    fn assert(_input: ParseInput) -> ParseResult<()> {
+    fn assert(input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
-    fn if_(_input: ParseInput) -> ParseResult<()> {
+    fn if_(input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
-    fn toMap(_input: ParseInput) -> ParseResult<()> {
+    fn toMap(input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
 
     #[alias(expression)]
     fn empty_list_literal(input: ParseInput) -> ParseResult<Expr> {
         Ok(match_nodes!(input.children();
-            [expression(e)] => spanned(input, EmptyListLit(e)),
+            [expression(e)] => spanned(&input, EmptyListLit(e)),
         ))
     }
 
@@ -674,19 +675,19 @@ impl DhallParser {
         Ok(match_nodes!(input.children();
             [lambda(()), label(l), expression(typ),
                     arrow(()), expression(body)] => {
-                spanned(input, Lam(l, typ, body))
+                spanned(&input, Lam(l, typ, body))
             },
             [if_(()), expression(cond), expression(left),
                     expression(right)] => {
-                spanned(input, Op(BoolIf(cond, left, right)))
+                spanned(&input, Op(BoolIf(cond, left, right)))
             },
             [let_binding(bindings).., expression(final_expr)] => {
                 bindings.rev().fold(
                     final_expr,
                     |acc, x| {
                         spanned_union(
-                            acc.span(),
-                            x.3,
+                            &acc.span(),
+                            &x.3,
                             Let(x.0, x.1, x.2, acc)
                         )
                     }
@@ -694,22 +695,22 @@ impl DhallParser {
             },
             [forall(()), label(l), expression(typ),
                     arrow(()), expression(body)] => {
-                spanned(input, Pi(l, typ, body))
+                spanned(&input, Pi(l, typ, body))
             },
             [expression(typ), arrow(()), expression(body)] => {
-                spanned(input, Pi("_".into(), typ, body))
+                spanned(&input, Pi("_".into(), typ, body))
             },
             [merge(()), expression(x), expression(y), expression(z)] => {
-                spanned(input, Op(Merge(x, y, Some(z))))
+                spanned(&input, Op(Merge(x, y, Some(z))))
             },
             [assert(()), expression(x)] => {
-                spanned(input, Assert(x))
+                spanned(&input, Assert(x))
             },
             [toMap(()), expression(x), expression(y)] => {
-                spanned(input, Op(ToMap(x, Some(y))))
+                spanned(&input, Op(ToMap(x, Some(y))))
             },
             [expression(e), expression(annot)] => {
-                spanned(input, Annot(e, annot))
+                spanned(&input, Annot(e, annot))
             },
             [expression(e)] => e,
         ))
@@ -720,14 +721,17 @@ impl DhallParser {
     ) -> ParseResult<(Label, Option<Expr>, Expr, Span)> {
         Ok(match_nodes!(input.children();
             [label(name), expression(annot), expression(expr)] =>
-                (name, Some(annot), expr, input_to_span(input)),
+                (name, Some(annot), expr, input_to_span(&input)),
             [label(name), expression(expr)] =>
-                (name, None, expr, input_to_span(input)),
+                (name, None, expr, input_to_span(&input)),
         ))
     }
 
     #[alias(expression, shortcut = true)]
     #[prec_climb(expression, PRECCLIMBER)]
+    // `prec_climb` calls this with the operator node by value; taking `&ParseInput`
+    // does not typecheck against the signature the macro generates.
+    #[expect(clippy::needless_pass_by_value)]
     fn operator_expression(
         l: Expr,
         op: ParseInput,
@@ -750,14 +754,14 @@ impl DhallParser {
             bool_ne => BoolNE,
             equivalent => Equivalence,
             r => {
-                return Err(op.error(format!("Rule {:?} isn't an operator", r)));
+                return Err(op.error(format!("Rule {r:?} isn't an operator")));
             }
         };
 
-        Ok(spanned_union(l.span(), r.span(), Op(BinOp(op, l, r))))
+        Ok(spanned_union(&l.span(), &r.span(), Op(BinOp(op, l, r))))
     }
 
-    fn Some_(_input: ParseInput) -> ParseResult<()> {
+    fn Some_(input: ParseInput) -> ParseResult<()> {
         Ok(())
     }
 
@@ -770,8 +774,8 @@ impl DhallParser {
                     first,
                     |acc, (labels, e)| {
                         spanned_union(
-                            acc.span(),
-                            e.span(),
+                            &acc.span(),
+                            &e.span(),
                             Op(With(acc, labels, e))
                         )
                     }
@@ -795,8 +799,8 @@ impl DhallParser {
                     first,
                     |acc, e| {
                         spanned_union(
-                            acc.span(),
-                            e.span(),
+                            &acc.span(),
+                            &e.span(),
                             Op(App(acc, e))
                         )
                     }
@@ -809,13 +813,13 @@ impl DhallParser {
     fn first_application_expression(input: ParseInput) -> ParseResult<Expr> {
         Ok(match_nodes!(input.children();
             [Some_(()), expression(e)] => {
-                spanned(input, SomeLit(e))
+                spanned(&input, SomeLit(e))
             },
             [merge(()), expression(x), expression(y)] => {
-                spanned(input, Op(Merge(x, y, None)))
+                spanned(&input, Op(Merge(x, y, None)))
             },
             [toMap(()), expression(x)] => {
-                spanned(input, Op(ToMap(x, None)))
+                spanned(&input, Op(ToMap(x, None)))
             },
             [expression(e)] => e,
         ))
@@ -830,8 +834,8 @@ impl DhallParser {
                     first,
                     |acc, e| {
                         spanned_union(
-                            acc.span(),
-                            e.span(),
+                            &acc.span(),
+                            &e.span(),
                             Op(Completion(acc, e)),
                         )
                     }
@@ -849,8 +853,8 @@ impl DhallParser {
                     first,
                     |acc, e| {
                         spanned_union(
-                            acc.span(),
-                            e.1,
+                            &acc.span(),
+                            &e.1,
                             match e.0 {
                                 Selector::Field(l) => Op(Field(acc, l)),
                                 Selector::Projection(ls) => Op(Projection(acc, ls)),
@@ -869,7 +873,7 @@ impl DhallParser {
             [labels(ls)] => Selector::Projection(ls),
             [expression(e)] => Selector::ProjectionByExpr(e),
         );
-        Ok((stor, input_to_span(input)))
+        Ok((stor, input_to_span(&input)))
     }
 
     fn labels(input: ParseInput) -> ParseResult<BTreeSet<Label>> {
@@ -892,23 +896,23 @@ impl DhallParser {
     #[alias(expression, shortcut = true)]
     fn primitive_expression(input: ParseInput) -> ParseResult<Expr> {
         Ok(match_nodes!(input.children();
-            [double_literal(n)] => spanned(input, Num(Double(n))),
-            [natural_literal(n)] => spanned(input, Num(Natural(n))),
-            [integer_literal(n)] => spanned(input, Num(Integer(n))),
-            [double_quote_literal(s)] => spanned(input, TextLit(s)),
-            [single_quote_literal(s)] => spanned(input, TextLit(s)),
-            [record_type_or_literal(e)] => spanned(input, e),
-            [union_type(e)] => spanned(input, e),
+            [double_literal(n)] => spanned(&input, Num(Double(n))),
+            [natural_literal(n)] => spanned(&input, Num(Natural(n))),
+            [integer_literal(n)] => spanned(&input, Num(Integer(n))),
+            [double_quote_literal(s)] => spanned(&input, TextLit(s)),
+            [single_quote_literal(s)] => spanned(&input, TextLit(s)),
+            [record_type_or_literal(e)] => spanned(&input, e),
+            [union_type(e)] => spanned(&input, e),
             [expression(e)] => e,
         ))
     }
 
     fn record_type_or_literal(input: ParseInput) -> ParseResult<UnspannedExpr> {
         Ok(match_nodes!(input.children();
-            [empty_record_literal(_)] => RecordLit(Default::default()),
+            [empty_record_literal(())] => RecordLit(BTreeMap::default()),
             [non_empty_record_type(map)] => RecordType(map),
             [non_empty_record_literal(map)] => RecordLit(map),
-            [] => RecordType(Default::default()),
+            [] => RecordType(BTreeMap::default()),
         ))
     }
 
@@ -1019,7 +1023,7 @@ impl DhallParser {
     fn non_empty_list_literal(input: ParseInput) -> ParseResult<Expr> {
         Ok(match_nodes!(input.children();
             [expression(items)..] => spanned(
-                input,
+                &input,
                 NEListLit(items.collect())
             )
         ))
@@ -1028,7 +1032,7 @@ impl DhallParser {
     #[alias(expression)]
     fn final_expression(input: ParseInput) -> ParseResult<Expr> {
         Ok(match_nodes!(input.into_children();
-            [expression(e), EOI(_)] => e
+            [expression(e), EOI(())] => e
         ))
     }
 }
@@ -1074,8 +1078,7 @@ fn test_grammar_files_in_sync() {
         let output = String::from_utf8_lossy(&out.stdout);
         panic!(
             "The local dhall.abnf file differs from the one from \
-             dhall-lang!\n{}",
-            output
+             dhall-lang!\n{output}"
         );
     }
 }

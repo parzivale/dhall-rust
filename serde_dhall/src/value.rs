@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, HashMap};
 use std::result::Result as StdResult;
 
-use sessiond_dhall::Ctxt;
 use sessiond_dhall::builtins::Builtin;
 use sessiond_dhall::operations::OpKind;
 use sessiond_dhall::semantics::{Hir, HirKind, Nir, NirKind};
 pub use sessiond_dhall::syntax::NumKind;
 use sessiond_dhall::syntax::{Expr, ExprKind, Span};
+use sessiond_dhall::{Ctxt, ToExprOptions};
 
 use crate::{Error, ErrorKind, FromDhall, Function, Result, ToDhall};
 
@@ -255,27 +255,26 @@ impl Value {
                 kind: ValueKind::Ty(ty),
             }
         } else {
-            let expr = x.to_hir_noenv().to_expr(cx, Default::default());
+            let expr = x.to_hir_noenv().to_expr(cx, ToExprOptions::default());
             return Err(Error(ErrorKind::Deserialize(format!(
-                "this is neither a simple type nor a simple value: {}",
-                expr
+                "this is neither a simple type nor a simple value: {expr}"
             ))));
         })
     }
 
-    /// Converts a Value into a SimpleValue.
+    /// Converts a Value into a `SimpleValue`.
     pub(crate) fn to_simple_value(&self) -> Option<SimpleValue> {
         match &self.kind {
             ValueKind::Val(val, _) => Some(val.clone()),
-            _ => None,
+            ValueKind::Ty(_) => None,
         }
     }
 
-    /// Converts a Value into a SimpleType.
+    /// Converts a Value into a `SimpleType`.
     pub(crate) fn to_simple_type(&self) -> Option<SimpleType> {
         match &self.kind {
             ValueKind::Ty(ty) => Some(ty.clone()),
-            _ => None,
+            ValueKind::Val(..) => None,
         }
     }
 
@@ -329,7 +328,7 @@ impl SimpleValue {
                 Some(Box::new(Self::from_nir(cx, x)?)),
             ),
             NirKind::UnionConstructor(field, ty)
-                if ty.get(field).map(|f| f.is_some()) == Some(false) =>
+                if ty.get(field).is_some_and(|f| !f.is_some()) =>
             {
                 SimpleValue::Union(field.into(), None)
             }
@@ -363,26 +362,28 @@ impl SimpleValue {
         };
         let type_missing = || {
             Error(ErrorKind::Serialize(format!(
-                "cannot serialize value without a type annotation: {:?}",
-                self
+                "cannot serialize value without a type annotation: {self:?}"
             )))
         };
         let kind = match (self, ty) {
             // A function is already a complete expression; the annotation adds nothing, so we only
             // check that it is a function type at all.
-            (V::Function(f), None)
-            | (V::Function(f), Some(T::Function(..))) => return f.to_hir(cx),
+            (V::Function(f), None | Some(T::Function(..))) => {
+                return f.to_hir(cx);
+            }
 
             (V::Num(num @ NumKind::Bool(_)), Some(T::Bool))
             | (V::Num(num @ NumKind::Natural(_)), Some(T::Natural))
             | (V::Num(num @ NumKind::Integer(_)), Some(T::Integer))
             | (V::Num(num @ NumKind::Double(_)), Some(T::Double))
             | (V::Num(num), None) => ExprKind::Num(num.clone()),
-            (V::Text(v), Some(T::Text)) | (V::Text(v), None) => {
+            (V::Text(v), Some(T::Text) | None) => {
                 ExprKind::TextLit(v.clone().into())
             }
 
-            (V::Optional(None), None) => return Err(type_missing()),
+            (V::Optional(None) | V::Union(..), None) => {
+                return Err(type_missing());
+            }
             (V::Optional(None), Some(T::Optional(t))) => {
                 ExprKind::Op(OpKind::App(
                     hir(ExprKind::Builtin(Builtin::OptionalNone)),
@@ -430,7 +431,6 @@ impl SimpleValue {
                     .collect::<Result<_>>()?,
             ),
 
-            (V::Union(..), None) => return Err(type_missing()),
             (V::Union(variant, Some(v)), Some(T::Union(t))) => {
                 match t.get(variant) {
                     Some(Some(variant_t)) => ExprKind::Op(OpKind::App(
@@ -468,7 +468,7 @@ impl SimpleValue {
     /// Converts back to the corresponding AST expression.
     pub(crate) fn to_expr(&self, ty: Option<&SimpleType>) -> Result<Expr> {
         Ctxt::with_new(|cx| {
-            Ok(self.to_hir(cx, ty)?.to_expr(cx, Default::default()))
+            Ok(self.to_hir(cx, ty)?.to_expr(cx, ToExprOptions::default()))
         })
     }
 }
@@ -550,7 +550,7 @@ impl SimpleType {
             SimpleType::Union(kts) => ExprKind::UnionType(
                 kts.iter()
                     .map(|(k, t)| {
-                        (k.as_str().into(), t.as_ref().map(|t| t.to_hir()))
+                        (k.as_str().into(), t.as_ref().map(SimpleType::to_hir))
                     })
                     .collect(),
             ),
@@ -563,7 +563,7 @@ impl SimpleType {
 
     /// Converts back to the corresponding AST expression.
     pub(crate) fn to_expr(&self) -> Expr {
-        Ctxt::with_new(|cx| self.to_hir().to_expr(cx, Default::default()))
+        Ctxt::with_new(|cx| self.to_hir().to_expr(cx, ToExprOptions::default()))
     }
 }
 
@@ -581,8 +581,7 @@ impl FromDhall for SimpleType {
     fn from_dhall(v: &Value) -> Result<Self> {
         v.to_simple_type().ok_or_else(|| {
             Error(ErrorKind::Deserialize(format!(
-                "this cannot be deserialized into a simple type: {}",
-                v
+                "this cannot be deserialized into a simple type: {v}"
             )))
         })
     }
@@ -603,7 +602,7 @@ impl ToDhall for SimpleType {
 impl Eq for ValueKind {}
 impl PartialEq for ValueKind {
     fn eq(&self, other: &Self) -> bool {
-        use ValueKind::*;
+        use ValueKind::{Ty, Val};
         match (self, other) {
             (Val(a, _), Val(b, _)) => a == b,
             (Ty(a), Ty(b)) => a == b,
@@ -638,7 +637,7 @@ impl std::fmt::Display for SimpleType {
 fn test_display_simpletype() {
     use SimpleType::*;
     let ty = List(Box::new(Optional(Box::new(Natural))));
-    assert_eq!(ty.to_string(), "List (Optional Natural)".to_string())
+    assert_eq!(ty.to_string(), "List (Optional Natural)".to_string());
 }
 
 #[test]
@@ -649,5 +648,5 @@ fn test_display_value() {
     let val = Value {
         kind: ValueKind::Val(val, Some(ty)),
     };
-    assert_eq!(val.to_string(), "[] : List (Optional Natural)".to_string())
+    assert_eq!(val.to_string(), "[] : List (Optional Natural)".to_string());
 }

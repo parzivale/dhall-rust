@@ -108,7 +108,7 @@ use sessiond_serde_dhall::Function;
 let f: Function =
     sessiond_serde_dhall::from_str("\\(x : Natural) -> x + 1").parse().unwrap();
 
-assert_eq!(f.apply::<_, u64>(41u64).unwrap(), 42);
+assert_eq!(f.apply::<_, u64>(&41u64).unwrap(), 42);
 ```
 
 ### Maps

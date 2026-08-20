@@ -84,8 +84,7 @@ impl ImportLocationKind {
                         dir.push("..".to_string());
                         dir
                     }
-                    FilePrefix::Absolute => vec![],
-                    FilePrefix::Home => vec![],
+                    FilePrefix::Absolute | FilePrefix::Home => vec![],
                 };
                 let path: Vec<_> = root
                     .into_iter()
@@ -109,8 +108,9 @@ impl ImportLocationKind {
                     FilePrefix::Parent => {
                         url = url.join("..")?;
                     }
-                    FilePrefix::Absolute => panic!("error"),
-                    FilePrefix::Home => panic!("error"),
+                    FilePrefix::Absolute | FilePrefix::Home => {
+                        panic!("error")
+                    }
                 }
                 url = url.join(&path.file_path.join("/"))?;
                 ImportLocationKind::Remote(url)
@@ -136,9 +136,8 @@ impl ImportLocationKind {
                 )?
             }
             ImportLocationKind::Env(var_name) => {
-                let val = match env::var(var_name) {
-                    Ok(val) => val,
-                    Err(_) => return Err(ImportError::MissingEnvVar.into()),
+                let Ok(val) = env::var(var_name) else {
+                    return Err(ImportError::MissingEnvVar.into());
                 };
                 Parsed::parse_str(&val)?
             }
@@ -207,8 +206,8 @@ impl std::fmt::Display for ImportLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match &self.kind {
             ImportLocationKind::Local(path) => write!(f, "{}", path.display()),
-            ImportLocationKind::Remote(url) => write!(f, "{}", url),
-            ImportLocationKind::Env(name) => write!(f, "env:{}", name),
+            ImportLocationKind::Remote(url) => write!(f, "{url}"),
+            ImportLocationKind::Env(name) => write!(f, "env:{name}"),
             ImportLocationKind::Missing => write!(f, "missing"),
             ImportLocationKind::NoImport => write!(f, "<no import>"),
         }
@@ -216,6 +215,7 @@ impl std::fmt::Display for ImportLocation {
 }
 
 impl ImportLocation {
+    #[must_use]
     pub fn dhall_code_of_unknown_origin() -> Self {
         ImportLocation {
             kind: ImportLocationKind::Missing,
@@ -223,6 +223,7 @@ impl ImportLocation {
             headers: Vec::new(),
         }
     }
+    #[must_use]
     pub fn dhall_code_without_imports() -> Self {
         ImportLocation {
             kind: ImportLocationKind::NoImport,
@@ -230,6 +231,7 @@ impl ImportLocation {
             headers: Vec::new(),
         }
     }
+    #[must_use]
     pub fn local_dhall_code(path: PathBuf) -> Self {
         ImportLocation {
             kind: ImportLocationKind::Local(path),
@@ -237,6 +239,7 @@ impl ImportLocation {
             headers: Vec::new(),
         }
     }
+    #[must_use]
     pub fn remote_dhall_code(url: Url) -> Self {
         Self::remote_dhall_code_using(url, Vec::new())
     }
@@ -246,6 +249,7 @@ impl ImportLocation {
     /// They have to survive onto the location of the *fetched* expression, or
     /// its relative imports have no parent headers to inherit and forwarding
     /// stops after one hop.
+    #[must_use]
     pub fn remote_dhall_code_using(
         url: Url,
         headers: Vec<(String, String)>,
@@ -375,17 +379,15 @@ fn mkexpr(kind: UnspannedExpr) -> Expr {
 /// `List { mapKey : Text, mapValue : Text }` or
 /// `List { header : Text, value : Text }`.
 fn headers_from_nir(nir: &Nir<'_>) -> Vec<(String, String)> {
-    let entries = match nir.kind() {
-        NirKind::NEListLit(entries) => entries,
-        // An empty list has nothing to send.
-        _ => return Vec::new(),
+    // An empty list has nothing to send.
+    let NirKind::NEListLit(entries) = nir.kind() else {
+        return Vec::new();
     };
     entries
         .iter()
         .filter_map(|entry| {
-            let fields = match entry.kind() {
-                NirKind::RecordLit(fields) => fields,
-                _ => return None,
+            let NirKind::RecordLit(fields) = entry.kind() else {
+                return None;
             };
             let get = |names: [&str; 2]| {
                 names.iter().find_map(|name| {
@@ -414,9 +416,8 @@ fn check_cors(
 ) -> Result<(), Error> {
     // Only a remote parent can forge a request; a local file already has the
     // user's authority.
-    let parent = match parent {
-        ImportLocationKind::Remote(url) => url,
-        _ => return Ok(()),
+    let ImportLocationKind::Remote(parent) = parent else {
+        return Ok(());
     };
 
     // Same origin needs no header.
@@ -517,7 +518,7 @@ pub fn check_hash<'cx>(
                         hex::encode(actual_hash)
                     ))
                     .format(),
-            )?
+            )?;
         }
     }
     Ok(())
@@ -660,7 +661,7 @@ fn traverse_accumulate<'cx>(
     let cx = env.cx();
     let expr = desugar(expr);
     let kind = match expr.kind() {
-        ExprKind::Var(var) => match name_env.unlabel_var(&var) {
+        ExprKind::Var(var) => match name_env.unlabel_var(var) {
             Some(v) => HirKind::Var(v),
             None => HirKind::MissingVar(var.clone()),
         },
@@ -731,9 +732,7 @@ fn traverse_accumulate<'cx>(
                 }
                 hir
             });
-            match kind {
-                kind => HirKind::Expr(kind),
-            }
+            HirKind::Expr(kind)
         }
     };
     Hir::new(kind, expr.span())
@@ -787,10 +786,7 @@ fn resolve_with_env<'cx>(
 
 /// Resolves all imports and names. Returns errors if importing failed. Name errors are deferred to
 /// typechecking.
-pub fn resolve<'cx>(
-    cx: Ctxt<'cx>,
-    parsed: Parsed,
-) -> Result<Resolved<'cx>, Error> {
+pub fn resolve(cx: Ctxt<'_>, parsed: Parsed) -> Result<Resolved<'_>, Error> {
     parsed.resolve_with_env(&mut ImportEnv::new(cx))
 }
 
@@ -801,18 +797,18 @@ pub fn resolve<'cx>(
 /// second, which is what you want for configuration you did not write. Note the
 /// check is on where a request would actually go, so a relative import inside
 /// an already-remote file is refused too.
-pub fn resolve_without_remote_imports<'cx>(
-    cx: Ctxt<'cx>,
+pub fn resolve_without_remote_imports(
+    cx: Ctxt<'_>,
     parsed: Parsed,
-) -> Result<Resolved<'cx>, Error> {
+) -> Result<Resolved<'_>, Error> {
     parsed.resolve_with_env(&mut ImportEnv::new(cx).without_remote_imports())
 }
 
 /// Resolves names, and errors if we find any imports.
-pub fn skip_resolve<'cx>(
-    cx: Ctxt<'cx>,
+pub fn skip_resolve(
+    cx: Ctxt<'_>,
     parsed: Parsed,
-) -> Result<Resolved<'cx>, Error> {
+) -> Result<Resolved<'_>, Error> {
     let parsed = Parsed::from_expr_without_imports(parsed.0);
     resolve(cx, parsed)
 }
@@ -827,6 +823,7 @@ impl Parsed {
 }
 
 pub trait Canonicalize {
+    #[must_use]
     fn canonicalize(&self) -> Self;
 }
 
@@ -839,7 +836,7 @@ impl Canonicalize for FilePath {
                 // canonicalize(directory₀) = directory₁
                 // ───────────────────────────────────────
                 // canonicalize(directory₀/.) = directory₁
-                "." => continue,
+                "." => {}
                 ".." => match file_path.last() {
                     // canonicalize(directory₀) = ε
                     // ────────────────────────────
@@ -907,7 +904,7 @@ impl<SE: Copy> Canonicalize for ImportTarget<SE> {
                 query: url.query.clone(),
                 headers: url.headers,
             }),
-            ImportTarget::Env(name) => ImportTarget::Env(name.to_string()),
+            ImportTarget::Env(name) => ImportTarget::Env(name.clone()),
             ImportTarget::Missing => ImportTarget::Missing,
         }
     }

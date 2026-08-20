@@ -26,6 +26,7 @@ pub struct ValEnv<'cx, T> {
 pub type NzEnv<'cx> = ValEnv<'cx, ()>;
 
 impl NzVar {
+    #[must_use]
     pub fn new(idx: usize) -> Self {
         NzVar::Bound(idx)
     }
@@ -38,6 +39,7 @@ impl NzVar {
     }
     /// Get index of bound variable.
     /// Panics on a fresh variable.
+    #[must_use]
     pub fn idx(&self) -> usize {
         match self {
             NzVar::Bound(i) => *i,
@@ -49,15 +51,18 @@ impl NzVar {
 }
 
 impl<'cx, T: Clone> ValEnv<'cx, T> {
+    #[must_use]
     pub fn new(cx: Ctxt<'cx>) -> Self {
         ValEnv {
             cx,
             items: Vec::new(),
         }
     }
+    #[must_use]
     pub fn cx(&self) -> Ctxt<'cx> {
         self.cx
     }
+    #[must_use]
     pub fn discard_types(&self) -> ValEnv<'cx, ()> {
         let items = self
             .items
@@ -70,16 +75,19 @@ impl<'cx, T: Clone> ValEnv<'cx, T> {
         ValEnv { cx: self.cx, items }
     }
 
+    #[must_use]
     pub fn insert_type(&self, ty: T) -> Self {
         let mut env = self.clone();
         env.items.push(EnvItem::Kept(ty));
         env
     }
+    #[must_use]
     pub fn insert_value(&self, e: Nir<'cx>, ty: T) -> Self {
         let mut env = self.clone();
         env.items.push(EnvItem::Replaced(e, ty));
         env
     }
+    #[must_use]
     pub fn lookup_val(&self, var: AlphaVar) -> NirKind<'cx> {
         let idx = self.items.len() - 1 - var.idx();
         match &self.items[idx] {
@@ -87,6 +95,7 @@ impl<'cx, T: Clone> ValEnv<'cx, T> {
             EnvItem::Replaced(x, _) => x.kind().clone(),
         }
     }
+    #[must_use]
     pub fn lookup_ty(&self, var: AlphaVar) -> T {
         let idx = self.items.len() - 1 - var.idx();
         match &self.items[idx] {

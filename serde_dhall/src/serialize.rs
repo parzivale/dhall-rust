@@ -7,7 +7,7 @@ use sessiond_dhall::syntax::NumKind;
 
 use crate::value::SimpleValue;
 use crate::{Error, ErrorKind, Result, SimpleType, Value};
-use SimpleValue::*;
+use SimpleValue::{Function, List, Num, Optional, Record, Text, Union};
 
 pub trait Sealed {}
 
@@ -152,7 +152,7 @@ impl ser::Serializer for Serializer {
     }
 
     fn serialize_unit(self) -> Result<Self::Ok> {
-        Ok(Record(Default::default()))
+        Ok(Record(BTreeMap::default()))
     }
 
     fn serialize_unit_struct(self, _name: &'static str) -> Result<Self::Ok> {
@@ -314,9 +314,8 @@ impl ser::SerializeMap for MapSerializer {
     where
         T: ?Sized + ser::Serialize,
     {
-        let key = match key.serialize(Serializer::default())? {
-            Text(key) => key,
-            _ => return Err(<Error as ser::Error>::custom("not a string")),
+        let Text(key) = key.serialize(Serializer::default())? else {
+            return Err(<Error as ser::Error>::custom("not a string"));
         };
         if let Some(val) = self.val.take() {
             self.map.insert(key, val);
@@ -399,8 +398,8 @@ impl serde::ser::Serialize for SimpleValue {
     where
         S: serde::ser::Serializer,
     {
-        use NumKind::*;
-        use SimpleValue::*;
+        use NumKind::{Bool, Double, Integer, Natural};
+        use SimpleValue::{Function, List, Num, Optional, Record, Text, Union};
         use serde::ser::{SerializeMap, SerializeSeq};
 
         match self {
@@ -411,16 +410,14 @@ impl serde::ser::Serialize for SimpleValue {
                 (Some(x), _) => serializer.serialize_u64(x),
                 (None, Some(x)) => serializer.serialize_u128(x),
                 (None, None) => Err(S::Error::custom(format!(
-                    "Natural {} is too large for Rust's integer types",
-                    x
+                    "Natural {x} is too large for Rust's integer types"
                 ))),
             },
             Num(Integer(x)) => match (x.to_i64(), x.to_i128()) {
                 (Some(x), _) => serializer.serialize_i64(x),
                 (None, Some(x)) => serializer.serialize_i128(x),
                 (None, None) => Err(S::Error::custom(format!(
-                    "Integer {} is out of range for Rust's integer types",
-                    x
+                    "Integer {x} is out of range for Rust's integer types"
                 ))),
             },
             Num(Double(x)) => serializer.serialize_f64((*x).into()),

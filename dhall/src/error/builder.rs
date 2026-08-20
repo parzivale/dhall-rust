@@ -1,3 +1,8 @@
+// The message parameters take `impl Into<String>` rather than `impl ToString`:
+// both accept a literal or a `format!` result, but `Into` consumes what it is
+// given, so passing an owned `String` — which is what almost every caller has —
+// moves it instead of allocating a second copy.
+
 use annotate_snippets::{
     AnnotationKind, Element, Level, Renderer, Snippet, renderer::DecorStyle,
 };
@@ -60,13 +65,13 @@ struct FreeAnnotation {
     annotation_type: AnnotationType,
 }
 
-/// A builder that uses the annotate_snippets library to display nice error messages about source
+/// A builder that uses the `annotate_snippets` library to display nice error messages about source
 /// code locations.
 impl ErrorBuilder {
-    pub fn new(message: impl ToString) -> Self {
+    pub fn new(message: impl Into<String>) -> Self {
         ErrorBuilder {
             title: FreeAnnotation {
-                message: message.to_string(),
+                message: message.into(),
                 annotation_type: AnnotationType::Error,
             },
             annotations: Vec::new(),
@@ -78,28 +83,27 @@ impl ErrorBuilder {
     pub fn span_annot(
         &mut self,
         span: Span,
-        message: impl ToString,
+        message: impl Into<String>,
         annotation_type: AnnotationType,
     ) -> &mut Self {
         // Ignore spans not coming from a source file
-        let span = match span {
-            Span::Parsed(span) => span,
-            _ => return self,
+        let Span::Parsed(span) = span else {
+            return self;
         };
         self.annotations.push(SpannedAnnotation {
             span,
-            message: message.to_string(),
+            message: message.into(),
             annotation_type,
         });
         self
     }
     pub fn footer_annot(
         &mut self,
-        message: impl ToString,
+        message: impl Into<String>,
         annotation_type: AnnotationType,
     ) -> &mut Self {
         self.footer.push(FreeAnnotation {
-            message: message.to_string(),
+            message: message.into(),
             annotation_type,
         });
         self
@@ -108,29 +112,30 @@ impl ErrorBuilder {
     pub fn span_err(
         &mut self,
         span: Span,
-        message: impl ToString,
+        message: impl Into<String>,
     ) -> &mut Self {
         self.span_annot(span, message, AnnotationType::Error)
     }
     pub fn span_help(
         &mut self,
         span: Span,
-        message: impl ToString,
+        message: impl Into<String>,
     ) -> &mut Self {
         self.span_annot(span, message, AnnotationType::Help)
     }
-    pub fn help(&mut self, message: impl ToString) -> &mut Self {
+    pub fn help(&mut self, message: impl Into<String>) -> &mut Self {
         self.footer_annot(message, AnnotationType::Help)
     }
-    pub fn note(&mut self, message: impl ToString) -> &mut Self {
+    pub fn note(&mut self, message: impl Into<String>) -> &mut Self {
         self.footer_annot(message, AnnotationType::Note)
     }
 
     // TODO: handle multiple files
     pub fn format(&mut self) -> String {
-        if self.consumed {
-            panic!("tried to format the same ErrorBuilder twice")
-        }
+        assert!(
+            !self.consumed,
+            "tried to format the same ErrorBuilder twice"
+        );
         let this = std::mem::take(self);
         self.consumed = true;
 

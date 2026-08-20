@@ -70,14 +70,17 @@ impl<SubExpr> InterpolatedTextContents<SubExpr> {
 }
 
 impl<SubExpr> InterpolatedText<SubExpr> {
+    #[must_use]
     pub fn len(&self) -> usize {
         1 + 2 * self.tail.len()
     }
 
+    #[must_use]
     pub fn head(&self) -> &str {
         &self.head
     }
 
+    #[must_use]
     pub fn tail(&self) -> &Vec<(SubExpr, String)> {
         &self.tail
     }
@@ -86,6 +89,7 @@ impl<SubExpr> InterpolatedText<SubExpr> {
         &mut self.head
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.head.is_empty() && self.tail.is_empty()
     }
@@ -107,9 +111,9 @@ impl<SubExpr> InterpolatedText<SubExpr> {
         })
     }
 
-    pub fn iter<'a>(
-        &'a self,
-    ) -> impl Iterator<Item = InterpolatedTextContents<&'a SubExpr>> + 'a {
+    pub fn iter(
+        &self,
+    ) -> impl Iterator<Item = InterpolatedTextContents<&SubExpr>> + '_ {
         use InterpolatedTextContents::{Expr, Text};
         use std::iter::once;
         let exprs = self.tail.iter().map(|(e, _)| Expr(e));
@@ -142,7 +146,7 @@ impl<SubExpr> FromIterator<InterpolatedTextContents<SubExpr>>
             tail: Vec::new(),
         };
         let mut crnt_str = &mut res.head;
-        for x in iter.into_iter() {
+        for x in iter {
             match x {
                 InterpolatedTextContents::Text(s) => crnt_str.push_str(&s),
                 InterpolatedTextContents::Expr(e) => {

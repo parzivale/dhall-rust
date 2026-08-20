@@ -1,6 +1,6 @@
 use anyhow::Result;
 use std::env;
-use std::ffi::OsString;
+use std::ffi::OsStr;
 use std::fmt::{Debug, Display};
 use std::fs::{File, create_dir_all, read_to_string};
 use std::io::{Read, Write};
@@ -48,8 +48,7 @@ impl FileType {
         match self {
             FileType::Text => TestFile::Source(file),
             FileType::Binary => TestFile::Binary(file),
-            FileType::Hash => TestFile::UI(file),
-            FileType::UI => TestFile::UI(file),
+            FileType::Hash | FileType::UI => TestFile::UI(file),
         }
     }
 }
@@ -124,7 +123,7 @@ impl TestFile {
     ///
     /// The standard's normalization judgements are defined over untyped terms,
     /// and a few fixtures are deliberately ill-typed -- `Sort` has no type at
-    /// all, and FunctionNestedBindingXXFree is annotated "this test has free
+    /// all, and `FunctionNestedBindingXXFree` is annotated "this test has free
     /// variables, so it doesn't typecheck".
     pub fn normalize_untyped<'cx>(
         &self,
@@ -133,7 +132,7 @@ impl TestFile {
         Ok(self.resolve(cx)?.normalize_untyped(cx))
     }
 
-    /// If UPDATE_TEST_FILES is `true`, we overwrite the output files with our own output.
+    /// If `UPDATE_TEST_FILES` is `true`, we overwrite the output files with our own output.
     fn force_update() -> bool {
         UPDATE_TEST_FILES.load(Ordering::Acquire)
     }
@@ -145,7 +144,7 @@ impl TestFile {
         let mut file = File::create(path)?;
         match self {
             TestFile::Source(_) => {
-                writeln!(file, "{}", expr)?;
+                writeln!(file, "{expr}")?;
             }
             TestFile::Binary(_) => {
                 let expr_data = binary::encode(&expr)?;
@@ -174,7 +173,7 @@ impl TestFile {
         let path = self.path();
         create_dir_all(path.parent().unwrap())?;
         let mut file = File::create(path)?;
-        writeln!(file, "{}", x)?;
+        writeln!(file, "{x}")?;
         Ok(())
     }
 
@@ -250,7 +249,7 @@ impl TestFile {
         let expr_data = binary::encode(&expr)?;
         let expected_data = {
             let mut data = Vec::new();
-            File::open(&self.path())?.read_to_end(&mut data)?;
+            File::open(self.path())?.read_to_end(&mut data)?;
             data
         };
 
@@ -285,7 +284,7 @@ impl TestFile {
 
         let expected = read_to_string(self.path())?;
         let expected = expected.replace("\r\n", "\n"); // Normalize line endings
-        let msg = format!("{}\n", x);
+        let msg = format!("{x}\n");
         // TODO: git changes newlines on windows
         let msg = msg.replace("\r\n", "\n");
         if msg != expected {
@@ -347,18 +346,18 @@ impl std::fmt::Display for TestError {
 }
 impl std::error::Error for TestError {}
 
-fn dhall_files_in_dir<'a>(
-    dir: &'a Path,
+fn dhall_files_in_dir(
+    dir: &Path,
     take_ab_suffix: bool,
     filetype: FileType,
-) -> impl Iterator<Item = String> + 'a {
+) -> impl Iterator<Item = String> + '_ {
     WalkDir::new(dir)
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter_map(move |path| {
             let path = path.path().strip_prefix(dir).unwrap();
             let ext = path.extension()?;
-            if *ext != OsString::from(filetype.to_ext()) {
+            if ext != OsStr::new(filetype.to_ext()) {
                 return None;
             }
             let path = path.to_string_lossy();
@@ -382,7 +381,7 @@ static UPDATE_TEST_FILES: AtomicBool = AtomicBool::new(false);
 static LOCAL_TEST_PATH: &str = "dhall/tests/";
 static TEST_PATHS: &[&str] = &["dhall-lang/tests/", LOCAL_TEST_PATH];
 
-static FEATURES: &'static [TestFeature] = &[
+static FEATURES: &[TestFeature] = &[
     TestFeature {
         module_name: "parser_success",
         directory: "parser/success/",
@@ -493,12 +492,11 @@ fn discover_tests_for_feature(feature: TestFeature) -> Vec<Trial> {
             let rel_path = Path::new(feature.directory)
                 .join(&path)
                 .to_string_lossy()
-                .replace("\\", "/");
+                .replace('\\', "/");
             let is_ignored = ignore_test(feature.variant, &rel_path);
 
             // Transform path into a valid Rust identifier
-            let name =
-                path.replace("\\", "_").replace("/", "_").replace("-", "_");
+            let name = path.replace(['\\', '/', '-'], "_");
 
             let path = tests_dir.join(path);
             let path = path.to_string_lossy();
@@ -518,10 +516,10 @@ fn discover_tests_for_feature(feature: TestFeature) -> Vec<Trial> {
 
             let input = feature
                 .input_type
-                .construct(&format!("{}{}", path, input_suffix));
+                .construct(&format!("{path}{input_suffix}"));
             let output = feature
                 .output_type
-                .construct(&format!("{}{}", output_path, output_suffix));
+                .construct(&format!("{output_path}{output_suffix}"));
 
             let test = Trial::test(
                 format!("{}::{}", feature.module_name, name),
@@ -542,9 +540,11 @@ fn discover_tests_for_feature(feature: TestFeature) -> Vec<Trial> {
 
 /// Ignore some tests if they are known to be failing or not meant to pass.
 /// `path` must be relative to the test directorie(s).
-#[allow(clippy::nonminimal_bool)]
+#[expect(clippy::nonminimal_bool)]
 fn ignore_test(variant: SpecTestKind, path: &str) -> bool {
-    use SpecTestKind::*;
+    use SpecTestKind::{
+        ImportFailure, ImportSuccess, ParserFailure, TypeInferenceFailure,
+    };
 
     // This will never succeed because of a specificity of dhall-rust.
     // Fails because of Windows-specific shenanigans.
@@ -616,12 +616,17 @@ fn run_test(test: &SpecTest) -> Result<()> {
     /// Like `Result::unwrap_err`, but returns an error instead of panicking.
     fn unwrap_err<T: Debug, E>(x: Result<T, E>) -> Result<E, TestError> {
         match x {
-            Ok(x) => Err(TestError(format!("{:?}", x))),
+            Ok(x) => Err(TestError(format!("{x:?}"))),
             Err(e) => Ok(e),
         }
     }
 
-    use self::SpecTestKind::*;
+    use self::SpecTestKind::{
+        AlphaNormalization, BinaryDecodingFailure, BinaryDecodingSuccess,
+        BinaryEncoding, ImportFailure, ImportSuccess, Normalization,
+        ParserFailure, ParserSuccess, Printer, SemanticHash,
+        TypeInferenceFailure, TypeInferenceSuccess,
+    };
     let SpecTest {
         input: expr,
         output: expected,
@@ -644,8 +649,7 @@ fn run_test(test: &SpecTest) -> Result<()> {
                             if e.kind() == io::ErrorKind::InvalidData => {}
                         e => {
                             return Err(TestError(format!(
-                                "Expected parse error, got: {:?}",
-                                e
+                                "Expected parse error, got: {e:?}"
                             ))
                             .into());
                         }
@@ -683,7 +687,7 @@ fn run_test(test: &SpecTest) -> Result<()> {
             SemanticHash => {
                 let expr = expr.normalize(cx)?.to_expr_alpha(cx);
                 let hash = hex::encode(expr.sha256_hash()?);
-                expected.compare_ui(format!("sha256:{}", hash))?;
+                expected.compare_ui(format!("sha256:{hash}"))?;
             }
             TypeInferenceSuccess => {
                 let ty = expr.typecheck(cx)?.get_type()?;
@@ -723,7 +727,7 @@ fn make_writable(dir: &Path) {
     for entry in WalkDir::new(dir) {
         let entry = entry.unwrap();
         let mut perms = entry.metadata().unwrap().permissions();
-        #[allow(clippy::permissions_set_readonly_false)]
+        #[expect(clippy::permissions_set_readonly_false)]
         perms.set_readonly(false);
         std::fs::set_permissions(entry.path(), perms).unwrap();
     }
@@ -819,8 +823,12 @@ fn main() {
         .join("dhall");
     let cache_dir = staging_dir.join("cache");
     std::fs::create_dir_all(&cache_dir).unwrap();
-    fs_extra::dir::copy(&dhall_cache_dir, &cache_dir, &Default::default())
-        .unwrap();
+    fs_extra::dir::copy(
+        &dhall_cache_dir,
+        &cache_dir,
+        &fs_extra::dir::CopyOptions::default(),
+    )
+    .unwrap();
     make_writable(&cache_dir);
 
     let dhall_home_dir = crate_dir

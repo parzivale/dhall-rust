@@ -4,7 +4,7 @@ use std::result::Result as StdResult;
 use sessiond_dhall::operations::OpKind;
 use sessiond_dhall::semantics::{Hir, Nir, NirKind};
 use sessiond_dhall::syntax::{Expr, ExprKind, Span, binary};
-use sessiond_dhall::{Ctxt, Parsed};
+use sessiond_dhall::{Ctxt, Parsed, ToExprOptions};
 
 use crate::{Error, ErrorKind, FromDhall, Result, SimpleType, ToDhall, Value};
 
@@ -49,7 +49,7 @@ fn dhall_err(e: impl Into<sessiond_dhall::error::Error>) -> Error {
 ///
 /// assert_eq!(config.port, 8080);
 /// assert_eq!(
-///     config.greeting.apply::<_, String>("world")?,
+///     config.greeting.apply::<_, String>(&"world")?,
 ///     "Hello, world!".to_string()
 /// );
 /// # Ok(())
@@ -101,7 +101,7 @@ impl Function {
     /// Builds a `Function` from a normalized value. Fails if the value isn't a function.
     pub(crate) fn from_nir<'cx>(cx: Ctxt<'cx>, nir: &Nir<'cx>) -> Result<Self> {
         let hir = nir.to_hir_noenv();
-        let expr = hir.to_expr(cx, Default::default());
+        let expr = hir.to_expr(cx, ToExprOptions::default());
         let ty = hir.typecheck_noenv(cx).map_err(dhall_err)?.ty().clone();
         match ty.as_nir().kind() {
             NirKind::PiClosure { annot, closure, .. } => Ok(Function {
@@ -116,8 +116,7 @@ impl Function {
                     .and_then(|nir| SimpleType::from_nir_opt(nir)),
             }),
             _ => Err(Error(ErrorKind::Deserialize(format!(
-                "this is not a function: {}",
-                expr
+                "this is not a function: {expr}"
             )))),
         }
     }
@@ -170,14 +169,14 @@ impl Function {
     /// let f: Function =
     ///     sessiond_serde_dhall::from_str("\\(x : Natural) -> x + 1").parse()?;
     ///
-    /// assert_eq!(f.apply::<_, u64>(1u64)?, 2);
-    /// assert_eq!(f.apply::<_, u64>(41u64)?, 42);
+    /// assert_eq!(f.apply::<_, u64>(&1u64)?, 2);
+    /// assert_eq!(f.apply::<_, u64>(&41u64)?, 42);
     ///
     /// // Passing an argument of the wrong type is an error. Note that the Rust type of the
     /// // argument decides the Dhall type it is converted to: `1u64` is a `Natural`, whereas the
     /// // default integer type `1i32` would be an `Integer`.
-    /// assert!(f.apply::<_, u64>("not a number").is_err());
-    /// assert!(f.apply::<_, u64>(1i32).is_err());
+    /// assert!(f.apply::<_, u64>(&"not a number").is_err());
+    /// assert!(f.apply::<_, u64>(&1i32).is_err());
     /// # Ok(())
     /// # }
     /// ```
@@ -193,8 +192,8 @@ impl Function {
     ///     sessiond_serde_dhall::from_str("\\(x : Natural) -> \\(y : Natural) -> x * y")
     ///         .parse()?;
     ///
-    /// let times_six: Function = f.apply(6u64)?;
-    /// assert_eq!(times_six.apply::<_, u64>(7u64)?, 42);
+    /// let times_six: Function = f.apply(&6u64)?;
+    /// assert_eq!(times_six.apply::<_, u64>(&7u64)?, 42);
     /// # Ok(())
     /// # }
     /// ```
@@ -212,16 +211,22 @@ impl Function {
     /// let increment: Function =
     ///     sessiond_serde_dhall::from_str("\\(x : Natural) -> x + 1").parse()?;
     ///
-    /// let increment_twice: Function = twice.apply(increment)?;
-    /// assert_eq!(increment_twice.apply::<_, u64>(40u64)?, 42);
+    /// let increment_twice: Function = twice.apply(&increment)?;
+    /// assert_eq!(increment_twice.apply::<_, u64>(&40u64)?, 42);
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// [`serialize()`]: crate::serialize()
-    pub fn apply<A, T>(&self, arg: A) -> Result<T>
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `arg` cannot be converted to Dhall, if it does not
+    /// typecheck against the function's input type, or if the result does not
+    /// deserialize into `T`.
+    pub fn apply<A, T>(&self, arg: &A) -> Result<T>
     where
-        A: ToDhall,
+        A: ToDhall + ?Sized,
         T: FromDhall,
     {
         let arg = arg.to_dhall(self.input_ty.as_ref())?;
@@ -261,6 +266,7 @@ impl Function {
     /// # Ok(())
     /// # }
     /// ```
+    #[must_use]
     pub fn input_type(&self) -> Option<SimpleType> {
         self.input_ty.clone()
     }
@@ -286,6 +292,7 @@ impl Function {
     /// # Ok(())
     /// # }
     /// ```
+    #[must_use]
     pub fn output_type(&self) -> Option<SimpleType> {
         self.output_ty.clone()
     }

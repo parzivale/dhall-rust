@@ -21,14 +21,11 @@ fn encode_natural<W: minicbor::encode::Write>(
     enc: &mut minicbor::Encoder<W>,
     n: &syntax::Natural,
 ) -> Result<(), minicbor::encode::Error<W::Error>> {
-    match n.to_u64() {
-        Some(small) => {
-            enc.u64(small)?;
-        }
-        None => {
-            enc.tag(IanaTag::PosBignum.tag())?;
-            enc.bytes(&n.to_bytes_be())?;
-        }
+    if let Some(small) = n.to_u64() {
+        enc.u64(small)?;
+    } else {
+        enc.tag(IanaTag::PosBignum.tag())?;
+        enc.bytes(&n.to_bytes_be())?;
     }
     Ok(())
 }
@@ -80,6 +77,10 @@ impl minicbor::Encode<()> for InterpolatedTextContents<&Expr> {
 }
 
 impl minicbor::Encode<()> for NaiveDouble {
+    // The standard requires the shortest CBOR encoding that round-trips
+    // exactly, so the narrowing casts are the point and the comparisons must be
+    // exact — a tolerance would let a lossy encoding through.
+    #[expect(clippy::cast_possible_truncation, clippy::float_cmp)]
     fn encode<W: minicbor::encode::Write>(
         &self,
         e: &mut minicbor::Encoder<W>,
@@ -88,7 +89,7 @@ impl minicbor::Encode<()> for NaiveDouble {
         let d: f64 = (*self).into();
         if d.is_nan() || d == half::f16::from_f64(d).to_f64() {
             e.f16(d as f32)?;
-        } else if d == d as f32 as f64 {
+        } else if d == f64::from(d as f32) {
             e.f32(d as f32)?;
         } else {
             e.f64(d)?;
@@ -181,40 +182,21 @@ impl minicbor::Encode<()> for Expr {
             Num(Double(n)) => n.encode(enc, ctx)?,
             Op(BoolIf(x, y, z)) => (14u64, x, y, z).encode(enc, ctx)?,
             Var(V(l, n)) if l.as_ref() == "_" => {
-                (*n as u64).encode(enc, ctx)?
+                (*n as u64).encode(enc, ctx)?;
             }
             Var(V(l, n)) => {
                 (l, *n as u64).encode(enc, ctx)?;
             }
             Lam(l, x, y) if l.as_ref() == "_" => {
-                (1u64, x, y).encode(enc, ctx)?
+                (1u64, x, y).encode(enc, ctx)?;
             }
             Lam(l, x, y) => (1u64, l, x, y).encode(enc, ctx)?,
             Pi(l, x, y) if l.as_ref() == "_" => {
-                (2u64, x, y).encode(enc, ctx)?
+                (2u64, x, y).encode(enc, ctx)?;
             }
             Pi(l, x, y) => (2u64, l, x, y).encode(enc, ctx)?,
-            Let(_, _, _, _) => {
-                let (bound_e, bindings) = collect_nested_lets(self);
-                let len = 1 + 3 * bindings.len() as u64 + 1;
-                enc.array(len)?;
-                25u64.encode(enc, ctx)?;
-                for (l, t, v) in bindings {
-                    l.encode(enc, ctx)?;
-                    t.encode(enc, ctx)?;
-                    v.encode(enc, ctx)?;
-                }
-                bound_e.encode(enc, ctx)?;
-            }
-            Op(App(_, _)) => {
-                let (f, args) = collect_nested_applications(self);
-                enc.array(1 + 1 + args.len() as u64)?;
-                0u64.encode(enc, ctx)?;
-                f.encode(enc, ctx)?;
-                for arg in args.into_iter().rev() {
-                    arg.encode(enc, ctx)?;
-                }
-            }
+            Let(_, _, _, _) => encode_let(enc, ctx, self)?,
+            Op(App(_, _)) => encode_application(enc, ctx, self)?,
             Annot(x, y) => (26u64, x, y).encode(enc, ctx)?,
             Assert(x) => (19u64, x).encode(enc, ctx)?,
             SomeLit(x) => (5u64, null, x).encode(enc, ctx)?,
@@ -225,7 +207,7 @@ impl minicbor::Encode<()> for Expr {
                         ExprKind::Builtin(self::Builtin::List)
                     ) =>
                 {
-                    (4u64, a).encode(enc, ctx)?
+                    (4u64, a).encode(enc, ctx)?;
                 }
                 _ => (28u64, x).encode(enc, ctx)?,
             },
@@ -264,58 +246,111 @@ impl minicbor::Encode<()> for Expr {
             Op(ProjectionByExpr(x, y)) => (10u64, x, (y,)).encode(enc, ctx)?,
             Op(Completion(x, y)) => (3u64, 13u64, x, y).encode(enc, ctx)?,
             Op(With(x, ls, y)) => (29u64, x, ls, y).encode(enc, ctx)?,
-            Import(import) => {
-                let count = 4 + match &import.location {
-                    ImportTarget::Remote(url) => 3 + url.path.file_path.len(),
-                    ImportTarget::Local(_, path) => path.file_path.len(),
-                    ImportTarget::Env(_) => 1,
-                    ImportTarget::Missing => 0,
-                };
-                enc.array(count as u64)?;
-
-                24u64.encode(enc, ctx)?;
-                import.hash.encode(enc, ctx)?;
-                import.mode.encode(enc, ctx)?;
-
-                let scheme: u64 = match &import.location {
-                    ImportTarget::Remote(url) => match url.scheme {
-                        Scheme::HTTP => 0,
-                        Scheme::HTTPS => 1,
-                    },
-                    ImportTarget::Local(prefix, _) => match prefix {
-                        FilePrefix::Absolute => 2,
-                        FilePrefix::Here => 3,
-                        FilePrefix::Parent => 4,
-                        FilePrefix::Home => 5,
-                    },
-                    ImportTarget::Env(_) => 6,
-                    ImportTarget::Missing => 7,
-                };
-                scheme.encode(enc, ctx)?;
-
-                match &import.location {
-                    ImportTarget::Remote(url) => {
-                        url.headers.encode(enc, ctx)?;
-                        url.authority.encode(enc, ctx)?;
-                        for p in url.path.file_path.iter() {
-                            p.encode(enc, ctx)?;
-                        }
-                        url.query.encode(enc, ctx)?;
-                    }
-                    ImportTarget::Local(_, path) => {
-                        for p in path.file_path.iter() {
-                            p.encode(enc, ctx)?;
-                        }
-                    }
-                    ImportTarget::Env(env) => {
-                        env.encode(enc, ctx)?;
-                    }
-                    ImportTarget::Missing => {}
-                }
-            }
-        };
+            Import(import) => encode_import(enc, ctx, import)?,
+        }
         Ok(())
     }
+}
+
+/// Encodes a chain of nested `let`s as the single flat tag-25 array the
+/// standard uses, rather than one array per binding.
+fn encode_let<W: minicbor::encode::Write>(
+    enc: &mut minicbor::Encoder<W>,
+    ctx: &mut (),
+    e: &Expr,
+) -> Result<(), minicbor::encode::Error<W::Error>> {
+    use minicbor::Encode;
+
+    let (bound_e, bindings) = collect_nested_lets(e);
+    let len = 1 + 3 * bindings.len() as u64 + 1;
+    enc.array(len)?;
+    25u64.encode(enc, ctx)?;
+    for (l, t, v) in bindings {
+        l.encode(enc, ctx)?;
+        t.encode(enc, ctx)?;
+        v.encode(enc, ctx)?;
+    }
+    bound_e.encode(enc, ctx)
+}
+
+/// Encodes a chain of applications as one tag-0 array holding the function and
+/// all of its arguments, which is how the standard spells `f a b c`.
+fn encode_application<W: minicbor::encode::Write>(
+    enc: &mut minicbor::Encoder<W>,
+    ctx: &mut (),
+    e: &Expr,
+) -> Result<(), minicbor::encode::Error<W::Error>> {
+    use minicbor::Encode;
+
+    let (f, args) = collect_nested_applications(e);
+    enc.array(1 + 1 + args.len() as u64)?;
+    0u64.encode(enc, ctx)?;
+    f.encode(enc, ctx)?;
+    // `collect_nested_applications` unwinds outermost-first, so the arguments
+    // come back reversed.
+    for arg in args.into_iter().rev() {
+        arg.encode(enc, ctx)?;
+    }
+    Ok(())
+}
+
+/// Encodes an import as standard tag 24, whose length and trailing fields both
+/// depend on where the import points.
+fn encode_import<W: minicbor::encode::Write>(
+    enc: &mut minicbor::Encoder<W>,
+    ctx: &mut (),
+    import: &syntax::Import<Expr>,
+) -> Result<(), minicbor::encode::Error<W::Error>> {
+    use minicbor::Encode;
+
+    let count = 4 + match &import.location {
+        ImportTarget::Remote(url) => 3 + url.path.file_path.len(),
+        ImportTarget::Local(_, path) => path.file_path.len(),
+        ImportTarget::Env(_) => 1,
+        ImportTarget::Missing => 0,
+    };
+    enc.array(count as u64)?;
+
+    24u64.encode(enc, ctx)?;
+    import.hash.encode(enc, ctx)?;
+    import.mode.encode(enc, ctx)?;
+
+    let scheme: u64 = match &import.location {
+        ImportTarget::Remote(url) => match url.scheme {
+            Scheme::HTTP => 0,
+            Scheme::HTTPS => 1,
+        },
+        ImportTarget::Local(prefix, _) => match prefix {
+            FilePrefix::Absolute => 2,
+            FilePrefix::Here => 3,
+            FilePrefix::Parent => 4,
+            FilePrefix::Home => 5,
+        },
+        ImportTarget::Env(_) => 6,
+        ImportTarget::Missing => 7,
+    };
+    scheme.encode(enc, ctx)?;
+
+    match &import.location {
+        ImportTarget::Remote(url) => {
+            url.headers.encode(enc, ctx)?;
+            url.authority.encode(enc, ctx)?;
+            for p in &url.path.file_path {
+                p.encode(enc, ctx)?;
+            }
+            url.query.encode(enc, ctx)?;
+        }
+        ImportTarget::Local(_, path) => {
+            for p in &path.file_path {
+                p.encode(enc, ctx)?;
+            }
+        }
+        ImportTarget::Env(env) => {
+            env.encode(enc, ctx)?;
+        }
+        ImportTarget::Missing => {}
+    }
+    Ok(())
 }
 
 fn collect_nested_applications<'a>(e: &'a Expr) -> (&'a Expr, Vec<&'a Expr>) {
@@ -335,7 +370,7 @@ fn collect_nested_applications<'a>(e: &'a Expr) -> (&'a Expr, Vec<&'a Expr>) {
 
 type LetBinding<'a> = (&'a Label, &'a Option<Expr>, &'a Expr);
 
-fn collect_nested_lets<'a>(e: &'a Expr) -> (&'a Expr, Vec<LetBinding<'a>>) {
+fn collect_nested_lets(e: &Expr) -> (&Expr, Vec<LetBinding<'_>>) {
     fn go<'a>(e: &'a Expr, vec: &mut Vec<LetBinding<'a>>) -> &'a Expr {
         match e.as_ref() {
             ExprKind::Let(l, t, v, e) => {

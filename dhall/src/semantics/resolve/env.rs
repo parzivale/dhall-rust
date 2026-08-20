@@ -28,22 +28,26 @@ pub struct ImportEnv<'cx> {
 }
 
 impl NameEnv {
+    #[must_use]
     pub fn new() -> Self {
         NameEnv::default()
     }
+    #[must_use]
     pub fn as_varenv(&self) -> VarEnv {
         VarEnv::from_size(self.names.len())
     }
 
+    #[must_use]
     pub fn insert(&self, x: &Label) -> Self {
         let mut env = self.clone();
         env.insert_mut(x);
         env
     }
     pub fn insert_mut(&mut self, x: &Label) {
-        self.names.push(x.clone())
+        self.names.push(x.clone());
     }
     /// How many binders currently in scope carry this name.
+    #[must_use]
     pub fn count_named(&self, x: &Label) -> usize {
         self.names.iter().filter(|name| *name == x).count()
     }
@@ -51,6 +55,7 @@ impl NameEnv {
         self.names.pop();
     }
 
+    #[must_use]
     pub fn unlabel_var(&self, var: &V) -> Option<AlphaVar> {
         let V(name, idx) = var;
         let (idx, _) = self
@@ -62,6 +67,7 @@ impl NameEnv {
             .nth(*idx)?;
         Some(AlphaVar::new(idx))
     }
+    #[must_use]
     pub fn label_var(&self, var: AlphaVar) -> V {
         let name = &self.names[self.names.len() - 1 - var.idx()];
         let idx = self
@@ -76,30 +82,35 @@ impl NameEnv {
 }
 
 impl<'cx> ImportEnv<'cx> {
+    #[must_use]
     pub fn new(cx: Ctxt<'cx>) -> Self {
         ImportEnv {
             cx,
             disk_cache: Cache::new().ok(),
-            mem_cache: Default::default(),
-            stack: Default::default(),
+            mem_cache: HashMap::default(),
+            stack: Vec::default(),
             allow_remote: true,
         }
     }
 
     /// Refuse to fetch any remote import. See [`ImportEnv::allow_remote`].
+    #[must_use]
     pub fn without_remote_imports(mut self) -> Self {
         self.allow_remote = false;
         self
     }
 
+    #[must_use]
     pub fn allow_remote(&self) -> bool {
         self.allow_remote
     }
 
+    #[must_use]
     pub fn cx(&self) -> Ctxt<'cx> {
         self.cx
     }
 
+    #[must_use]
     pub fn get_from_mem_cache(
         &self,
         location: &ImportLocation,
@@ -107,6 +118,7 @@ impl<'cx> ImportEnv<'cx> {
         Some(*self.mem_cache.get(location)?)
     }
 
+    #[must_use]
     pub fn get_from_disk_cache(
         &self,
         hash: &Option<Hash>,
@@ -137,11 +149,11 @@ impl<'cx> ImportEnv<'cx> {
         hash: &Option<Hash>,
         result: ImportResultId<'cx>,
     ) {
-        if let Some(disk_cache) = self.disk_cache.as_ref() {
-            if let Some(hash) = hash {
-                let expr = &self.cx()[result];
-                let _ = disk_cache.insert(self.cx(), hash, expr);
-            }
+        if let Some(disk_cache) = self.disk_cache.as_ref()
+            && let Some(hash) = hash
+        {
+            let expr = &self.cx()[result];
+            let _ = disk_cache.insert(self.cx(), hash, expr);
         }
     }
 

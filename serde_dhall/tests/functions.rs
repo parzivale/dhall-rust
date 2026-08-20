@@ -1,3 +1,7 @@
+// Each test defines the types it exercises next to the assertions that use
+// them, which reads better than hoisting every one to the top of the file.
+#![expect(clippy::items_after_statements)]
+
 use serde::Deserialize;
 use sessiond_serde_dhall::{Function, SimpleType, SimpleValue, from_str};
 use std::collections::HashMap;
@@ -5,8 +9,8 @@ use std::collections::HashMap;
 #[test]
 fn apply_a_simple_function() {
     let f: Function = from_str("\\(x : Natural) -> x + 1").parse().unwrap();
-    assert_eq!(f.apply::<_, u64>(1u64).unwrap(), 2);
-    assert_eq!(f.apply::<_, u64>(41u64).unwrap(), 42);
+    assert_eq!(f.apply::<_, u64>(&1u64).unwrap(), 2);
+    assert_eq!(f.apply::<_, u64>(&41u64).unwrap(), 42);
 }
 
 #[test]
@@ -14,7 +18,7 @@ fn a_function_can_be_applied_repeatedly() {
     let f: Function = from_str("\\(x : Natural) -> x * 2").parse().unwrap();
     let mut n = 1u64;
     for _ in 0..5 {
-        n = f.apply(n).unwrap();
+        n = f.apply(&n).unwrap();
     }
     assert_eq!(n, 32);
 }
@@ -35,7 +39,7 @@ fn apply_a_function_exposed_by_a_config() {
 
     assert_eq!(config.port, 8080);
     assert_eq!(
-        config.greeting.apply::<_, String>("world").unwrap(),
+        config.greeting.apply::<_, String>(&"world").unwrap(),
         "Hello, world!".to_string()
     );
 }
@@ -47,12 +51,12 @@ fn functions_nested_in_lists_and_optionals() {
             .parse()
             .unwrap();
     assert_eq!(fs.len(), 2);
-    assert_eq!(fs[0].apply::<_, u64>(0u64).unwrap(), 1);
-    assert_eq!(fs[1].apply::<_, u64>(0u64).unwrap(), 2);
+    assert_eq!(fs[0].apply::<_, u64>(&0u64).unwrap(), 1);
+    assert_eq!(fs[1].apply::<_, u64>(&0u64).unwrap(), 2);
 
     let f: Option<Function> =
         from_str("Some (\\(x : Natural) -> x + 1)").parse().unwrap();
-    assert_eq!(f.unwrap().apply::<_, u64>(0u64).unwrap(), 1);
+    assert_eq!(f.unwrap().apply::<_, u64>(&0u64).unwrap(), 1);
 
     let f: Option<Function> =
         from_str("None (Natural -> Natural)").parse().unwrap();
@@ -64,8 +68,8 @@ fn functions_of_several_arguments_are_curried() {
     let f: Function = from_str("\\(x : Natural) -> \\(y : Natural) -> x * y")
         .parse()
         .unwrap();
-    let times_six: Function = f.apply(6u64).unwrap();
-    assert_eq!(times_six.apply::<_, u64>(7u64).unwrap(), 42);
+    let times_six: Function = f.apply(&6u64).unwrap();
+    assert_eq!(times_six.apply::<_, u64>(&7u64).unwrap(), 42);
 }
 
 #[test]
@@ -73,13 +77,13 @@ fn a_function_captures_its_environment() {
     let f: Function = from_str("let n = 3 in \\(x : Natural) -> x * n")
         .parse()
         .unwrap();
-    assert_eq!(f.apply::<_, u64>(14u64).unwrap(), 42);
+    assert_eq!(f.apply::<_, u64>(&14u64).unwrap(), 42);
 }
 
 #[test]
 fn apply_a_partially_applied_builtin() {
     let f: Function = from_str("Natural/subtract 1").parse().unwrap();
-    assert_eq!(f.apply::<_, u64>(43u64).unwrap(), 42);
+    assert_eq!(f.apply::<_, u64>(&43u64).unwrap(), 42);
 }
 
 #[test]
@@ -102,7 +106,7 @@ fn arguments_and_results_can_be_structured() {
     .unwrap();
 
     assert_eq!(
-        f.apply::<_, Point>(Delta { dx: 1, dy: 2 }).unwrap(),
+        f.apply::<_, Point>(&Delta { dx: 1, dy: 2 }).unwrap(),
         Point { x: 2, y: 4 }
     );
 }
@@ -116,21 +120,21 @@ fn an_empty_list_argument_uses_the_declared_input_type() {
             .parse()
             .unwrap();
     let empty: Vec<u64> = vec![];
-    assert_eq!(f.apply::<_, u64>(empty).unwrap(), 0);
-    assert_eq!(f.apply::<_, u64>(vec![1u64, 2, 3]).unwrap(), 3);
+    assert_eq!(f.apply::<_, u64>(&empty).unwrap(), 0);
+    assert_eq!(f.apply::<_, u64>(&vec![1u64, 2, 3]).unwrap(), 3);
 }
 
 #[test]
 fn applying_an_argument_of_the_wrong_type_fails() {
     let f: Function = from_str("\\(x : Natural) -> x + 1").parse().unwrap();
-    assert!(f.apply::<_, u64>("not a number").is_err());
-    assert!(f.apply::<_, u64>(true).is_err());
+    assert!(f.apply::<_, u64>(&"not a number").is_err());
+    assert!(f.apply::<_, u64>(&true).is_err());
 }
 
 #[test]
 fn deserializing_the_result_into_the_wrong_type_fails() {
     let f: Function = from_str("\\(x : Natural) -> x + 1").parse().unwrap();
-    assert!(f.apply::<_, String>(1u64).is_err());
+    assert!(f.apply::<_, String>(&1u64).is_err());
 }
 
 #[test]
@@ -152,8 +156,8 @@ fn a_polymorphic_function_has_no_simple_type() {
     assert_eq!(f.output_type(), None);
 
     // It can still be applied, one argument at a time.
-    let identity: Function = f.apply(SimpleType::Natural).unwrap();
-    assert_eq!(identity.apply::<_, u64>(42u64).unwrap(), 42);
+    let identity: Function = f.apply(&SimpleType::Natural).unwrap();
+    assert_eq!(identity.apply::<_, u64>(&42u64).unwrap(), 42);
 }
 
 #[test]
@@ -172,7 +176,7 @@ fn function_types_are_simple_types() {
         .type_annotation(&ty)
         .parse::<Function>()
         .unwrap();
-    assert_eq!(f.apply::<_, String>(42u64).unwrap(), "42".to_string());
+    assert_eq!(f.apply::<_, String>(&42u64).unwrap(), "42".to_string());
 
     assert!(
         from_str("\\(x : Natural) -> x")
@@ -210,7 +214,7 @@ fn a_record_type_can_mention_functions() {
         .parse::<Foo>()
         .unwrap();
     assert_eq!(foo.x, 1);
-    assert_eq!(foo.f.apply::<_, u64>(1u64).unwrap(), 2);
+    assert_eq!(foo.f.apply::<_, u64>(&1u64).unwrap(), 2);
 }
 
 #[test]
@@ -228,9 +232,9 @@ fn a_function_survives_a_simple_value_round_trip() {
         from_str("\\(x : Natural) -> x + 1").parse().unwrap();
     let f = match val {
         SimpleValue::Function(f) => f,
-        v => panic!("expected a function, got {:?}", v),
+        v => panic!("expected a function, got {v:?}"),
     };
-    assert_eq!(f.apply::<_, u64>(1u64).unwrap(), 2);
+    assert_eq!(f.apply::<_, u64>(&1u64).unwrap(), 2);
 
     // A function nested inside a record survives too.
     let val: SimpleValue = from_str("{ f = \\(x : Natural) -> x + 1, y = 1 }")
@@ -239,11 +243,11 @@ fn a_function_survives_a_simple_value_round_trip() {
     let f = match &val {
         SimpleValue::Record(kvs) => match kvs.get("f") {
             Some(SimpleValue::Function(f)) => f.clone(),
-            v => panic!("expected a function, got {:?}", v),
+            v => panic!("expected a function, got {v:?}"),
         },
-        v => panic!("expected a record, got {:?}", v),
+        v => panic!("expected a record, got {v:?}"),
     };
-    assert_eq!(f.apply::<_, u64>(1u64).unwrap(), 2);
+    assert_eq!(f.apply::<_, u64>(&1u64).unwrap(), 2);
 
     // And it can be handed back to serde afterwards.
     #[derive(Deserialize)]
@@ -253,7 +257,7 @@ fn a_function_survives_a_simple_value_round_trip() {
     }
     let foo: Foo = sessiond_serde_dhall::from_simple_value(val).unwrap();
     assert_eq!(foo.y, 1);
-    assert_eq!(foo.f.apply::<_, u64>(1u64).unwrap(), 2);
+    assert_eq!(foo.f.apply::<_, u64>(&1u64).unwrap(), 2);
 }
 
 #[test]
@@ -305,7 +309,7 @@ fn a_config_containing_functions_round_trips() {
     let config: Config = from_str(&out).parse().unwrap();
     assert_eq!(config.port, 8080);
     assert_eq!(
-        config.greeting.apply::<_, String>("world").unwrap(),
+        config.greeting.apply::<_, String>(&"world").unwrap(),
         "Hello, world!".to_string()
     );
 }
@@ -329,8 +333,8 @@ fn a_function_can_be_passed_to_another_function() {
     let increment: Function =
         from_str("\\(x : Natural) -> x + 1").parse().unwrap();
 
-    let increment_twice: Function = map.apply(increment).unwrap();
-    assert_eq!(increment_twice.apply::<_, u64>(40u64).unwrap(), 42);
+    let increment_twice: Function = map.apply(&increment).unwrap();
+    assert_eq!(increment_twice.apply::<_, u64>(&40u64).unwrap(), 42);
 }
 
 #[test]
@@ -385,7 +389,7 @@ fn functions_serialize_from_every_nesting_position() {
         sessiond_serde_dhall::serialize(&Some(f.clone()))
             .to_string()
             .unwrap(),
-        format!("Some ({})", expected)
+        format!("Some ({expected})")
     );
 
     // Through `serialize_seq`.
@@ -393,7 +397,7 @@ fn functions_serialize_from_every_nesting_position() {
         sessiond_serde_dhall::serialize(&vec![f.clone()])
             .to_string()
             .unwrap(),
-        format!("[{}]", expected)
+        format!("[{expected}]")
     );
 
     // Through `serialize_struct`.
@@ -405,7 +409,7 @@ fn functions_serialize_from_every_nesting_position() {
         sessiond_serde_dhall::serialize(&Wrapper { f: f.clone() })
             .to_string()
             .unwrap(),
-        format!("{{ f = {} }}", expected)
+        format!("{{ f = {expected} }}")
     );
 
     // Through `serialize_newtype_variant`.
@@ -420,6 +424,6 @@ fn functions_serialize_from_every_nesting_position() {
             .type_annotation(&ty)
             .to_string()
             .unwrap(),
-        format!("< F: Natural → Natural >.F ({})", expected)
+        format!("< F: Natural → Natural >.F ({expected})")
     );
 }

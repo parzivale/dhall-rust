@@ -1,9 +1,4 @@
-#![allow(
-    clippy::many_single_char_names,
-    clippy::should_implement_trait,
-    clippy::new_without_default,
-    clippy::type_complexity
-)]
+#![expect(clippy::many_single_char_names, clippy::should_implement_trait)]
 
 mod ast;
 pub use crate::syntax::ast::visitor;

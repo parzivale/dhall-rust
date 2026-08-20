@@ -1,5 +1,4 @@
 #![doc(html_root_url = "https://docs.rs/sessiond-serde-dhall/1.0.1")]
-#![allow(unknown_lints)] // for `rustdoc::missing_doc_code_examples`
 #![warn(missing_docs, rustdoc::missing_doc_code_examples)]
 //! [Dhall][dhall] is a programmable configuration language that provides a non-repetitive
 //! alternative to JSON and YAML.
@@ -271,7 +270,7 @@
 //! let config: Config = sessiond_serde_dhall::from_str(data).parse()?;
 //!
 //! let names: Vec<String> = (0..config.replicas)
-//!     .map(|i| config.container_name.apply(i))
+//!     .map(|i| config.container_name.apply(&i))
 //!     .collect::<sessiond_serde_dhall::Result<_>>()?;
 //!
 //! assert_eq!(names, vec!["worker-0", "worker-1", "worker-2"]);

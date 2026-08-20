@@ -86,6 +86,11 @@ impl<T> Sealed for T where T: serde::de::DeserializeOwned {}
 /// # }
 /// ```
 ///
+/// # Errors
+///
+/// Returns an error if `v` does not match the shape `T` deserializes from, for
+/// example a record missing a field or a number too large for the target
+/// integer type.
 pub fn from_simple_value<T>(v: SimpleValue) -> crate::Result<T>
 where
     T: serde::de::DeserializeOwned,
@@ -100,8 +105,7 @@ where
     fn from_dhall(v: &Value) -> crate::Result<Self> {
         let sval = v.to_simple_value().ok_or_else(|| {
             Error(ErrorKind::Deserialize(format!(
-                "this cannot be deserialized into the serde data model: {}",
-                v
+                "this cannot be deserialized into the serde data model: {v}"
             )))
         })?;
         from_simple_value(sval)
@@ -124,8 +128,8 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
     where
         V: serde::de::Visitor<'de>,
     {
-        use NumKind::*;
-        use SimpleValue::*;
+        use NumKind::{Bool, Double, Integer, Natural};
+        use SimpleValue::{Function, List, Num, Optional, Record, Text, Union};
 
         // A function has no counterpart in the serde data model, so we hand it to the visitor as a
         // newtype struct. `Function` and `SimpleValue` know how to pick it up from there; any
@@ -150,16 +154,14 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
                 (Some(x), _) => visitor.visit_u64(x),
                 (None, Some(x)) => visitor.visit_u128(x),
                 (None, None) => Err(Error(ErrorKind::Deserialize(format!(
-                    "Natural {} is too large for Rust's integer types",
-                    x
+                    "Natural {x} is too large for Rust's integer types"
                 )))),
             },
             Num(Integer(x)) => match (x.to_i64(), x.to_i128()) {
                 (Some(x), _) => visitor.visit_i64(x),
                 (None, Some(x)) => visitor.visit_i128(x),
                 (None, None) => Err(Error(ErrorKind::Deserialize(format!(
-                    "Integer {} is out of range for Rust's integer types",
-                    x
+                    "Integer {x} is out of range for Rust's integer types"
                 )))),
             },
             Num(Double(x)) => visitor.visit_f64((*x).into()),
@@ -213,8 +215,9 @@ impl<'de: 'a, 'a> serde::Deserializer<'de> for Deserializer<'a> {
         let val = |x| Deserializer(Cow::Borrowed(x));
         match self.0.as_ref() {
             // Blindly takes keys in sorted order.
-            SimpleValue::Record(m) => visitor
-                .visit_seq(SeqDeserializer::new(m.iter().map(|(_, v)| val(v)))),
+            SimpleValue::Record(m) => {
+                visitor.visit_seq(SeqDeserializer::new(m.values().map(val)))
+            }
             _ => self.deserialize_any(visitor),
         }
     }

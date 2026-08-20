@@ -82,6 +82,7 @@ impl<'a, T> Serializer<'a, T, NoAnnot> {
     ///
     /// [`StaticType`]: crate::StaticType
     /// [`static_type_annotation()`]: Serializer::static_type_annotation()
+    #[must_use]
     pub fn type_annotation<'ty>(
         self,
         ty: &'ty SimpleType,
@@ -123,6 +124,7 @@ impl<'a, T> Serializer<'a, T, NoAnnot> {
     ///
     /// [`StaticType`]: crate::StaticType
     /// [`type_annotation()`]: Serializer::type_annotation()
+    #[must_use]
     pub fn static_type_annotation(self) -> Serializer<'a, T, StaticAnnot> {
         Serializer {
             annot: StaticAnnot,
@@ -131,7 +133,7 @@ impl<'a, T> Serializer<'a, T, NoAnnot> {
     }
 }
 
-impl<'a, T, A> Serializer<'a, T, A>
+impl<T, A> Serializer<'_, T, A>
 where
     A: TypeAnnot,
 {
@@ -156,6 +158,12 @@ where
     /// ```
     ///
     /// [`StaticType`]: crate::StaticType
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the value has no Dhall representation — an empty
+    /// list or an enum with no type annotation, say — or if it does not
+    /// typecheck against the annotation that was given.
     pub fn to_string(&self) -> Result<String>
     where
         T: ToDhall + HasAnnot<A>,

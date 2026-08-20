@@ -5,6 +5,7 @@ use crate::semantics::NzEnv;
 use crate::semantics::{Binder, Closure, Hir, HirKind, Nir, NirKind, TextLit};
 use crate::syntax::{ExprKind, InterpolatedTextContents};
 
+#[must_use]
 pub fn apply_any<'cx>(f: &Nir<'cx>, a: Nir<'cx>) -> NirKind<'cx> {
     match f.kind() {
         NirKind::LamClosure { closure, .. } => closure.apply(a).kind().clone(),
@@ -20,7 +21,6 @@ pub fn squash_textlit<'cx>(
     elts: impl Iterator<Item = InterpolatedTextContents<Nir<'cx>>>,
 ) -> Vec<InterpolatedTextContents<Nir<'cx>>> {
     use InterpolatedTextContents::{Expr, Text};
-    use std::mem::replace;
 
     fn inner<'cx>(
         elts: impl Iterator<Item = InterpolatedTextContents<Nir<'cx>>>,
@@ -30,17 +30,16 @@ pub fn squash_textlit<'cx>(
         for contents in elts {
             match contents {
                 Text(s) => crnt_str.push_str(&s),
-                Expr(e) => match e.kind() {
-                    NirKind::TextLit(elts2) => {
-                        inner(elts2.iter().cloned(), crnt_str, ret)
-                    }
-                    _ => {
+                Expr(e) => {
+                    if let NirKind::TextLit(elts2) = e.kind() {
+                        inner(elts2.iter().cloned(), crnt_str, ret);
+                    } else {
                         if !crnt_str.is_empty() {
-                            ret.push(Text(replace(crnt_str, String::new())))
+                            ret.push(Text(std::mem::take(crnt_str)));
                         }
-                        ret.push(Expr(e.clone()))
+                        ret.push(Expr(e.clone()));
                     }
-                },
+                }
             }
         }
     }
@@ -49,7 +48,7 @@ pub fn squash_textlit<'cx>(
     let mut ret = Vec::new();
     inner(elts, &mut crnt_str, &mut ret);
     if !crnt_str.is_empty() {
-        ret.push(Text(replace(&mut crnt_str, String::new())))
+        ret.push(Text(std::mem::take(&mut crnt_str)));
     }
     ret
 }
@@ -83,20 +82,25 @@ where
 
 pub type Ret<'cx> = NirKind<'cx>;
 
-pub fn ret_nir<'cx>(x: Nir<'cx>) -> Ret<'cx> {
+#[must_use]
+pub fn ret_nir(x: Nir<'_>) -> Ret<'_> {
     x.into_kind()
 }
-pub fn ret_kind<'cx>(x: NirKind<'cx>) -> Ret<'cx> {
+#[must_use]
+pub fn ret_kind(x: NirKind<'_>) -> Ret<'_> {
     x
 }
+#[must_use]
 pub fn ret_ref<'cx>(x: &Nir<'cx>) -> Ret<'cx> {
     x.kind().clone()
 }
-pub fn ret_op<'cx>(x: OpKind<Nir<'cx>>) -> Ret<'cx> {
+#[must_use]
+pub fn ret_op(x: OpKind<Nir<'_>>) -> Ret<'_> {
     NirKind::Op(x)
 }
 
-pub fn normalize_one_layer<'cx>(expr: ExprKind<Nir<'cx>>) -> NirKind<'cx> {
+#[must_use]
+pub fn normalize_one_layer(expr: ExprKind<Nir<'_>>) -> NirKind<'_> {
     use NirKind::{
         Assert, Const, NEListLit, NEOptionalLit, Num, RecordLit, RecordType,
         UnionType,
@@ -152,6 +156,7 @@ pub fn normalize_one_layer<'cx>(expr: ExprKind<Nir<'cx>>) -> NirKind<'cx> {
 }
 
 /// Normalize Hir into WHNF
+#[must_use]
 pub fn normalize_hir<'cx>(env: &NzEnv<'cx>, hir: &Hir<'cx>) -> NirKind<'cx> {
     match hir.kind() {
         HirKind::MissingVar(..) => unreachable!("ruled out by typechecking"),

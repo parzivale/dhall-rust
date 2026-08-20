@@ -1,11 +1,14 @@
 use std::cmp::max;
+use std::collections::BTreeMap;
 
 use crate::Ctxt;
 use crate::builtins::{Builtin, type_of_builtin};
 use crate::error::{ErrorBuilder, TypeError, TypeMessage};
 use crate::operations::typecheck_operation;
 use crate::semantics::{Hir, HirKind, Nir, NirKind, Tir, TyEnv, Type};
-use crate::syntax::{Const, ExprKind, InterpolatedTextContents, NumKind, Span};
+use crate::syntax::{
+    Const, ExprKind, InterpolatedTextContents, Label, NumKind, Span,
+};
 
 fn function_check(a: Const, b: Const) -> Const {
     if b == Const::Type {
@@ -15,16 +18,60 @@ fn function_check(a: Const, b: Const) -> Const {
     }
 }
 
-pub fn mkerr<T, S: ToString>(msg: S) -> Result<T, TypeError> {
-    Err(TypeError::new(TypeMessage::Custom(msg.to_string())))
+pub fn mkerr<T, S: Into<String>>(msg: S) -> Result<T, TypeError> {
+    Err(TypeError::new(TypeMessage::Custom(msg.into())))
 }
 
-pub fn mk_span_err<T, S: ToString>(span: Span, msg: S) -> Result<T, TypeError> {
-    mkerr(
-        ErrorBuilder::new(msg.to_string())
-            .span_err(span, msg.to_string())
-            .format(),
-    )
+pub fn mk_span_err<T, S: Into<String>>(
+    span: Span,
+    msg: S,
+) -> Result<T, TypeError> {
+    // The message is both the title and the span's label, so one of the two
+    // needs its own copy.
+    let msg = msg.into();
+    mkerr(ErrorBuilder::new(msg.clone()).span_err(span, msg).format())
+}
+
+/// The universe a record or union *type* lives in: the largest universe any of
+/// its fields lives in, or `Type` when it has none.
+fn universe_of_fields<'cx, 'a>(
+    fields: impl Iterator<Item = &'a Tir<'cx, 'a>>,
+    err: &str,
+) -> Result<Const, TypeError>
+where
+    'cx: 'a,
+{
+    let mut k = Const::Type;
+    for t in fields {
+        match t.ty().as_const() {
+            Some(c) => k = max(k, c),
+            None => return mk_span_err(t.span(), err),
+        }
+    }
+    Ok(k)
+}
+
+/// The record type a record literal has, which needs each field's type rather
+/// than the field itself.
+fn type_record_lit<'cx>(
+    kvs: &BTreeMap<Label, Tir<'cx, '_>>,
+) -> Result<Type<'cx>, TypeError> {
+    // An empty record type has type Type
+    let mut k = Const::Type;
+    for v in kvs.values() {
+        // Check that the fields have a valid kind
+        match v.ty().ty().as_const() {
+            Some(c) => k = max(k, c),
+            None => return mk_span_err(v.span(), "InvalidFieldType"),
+        }
+    }
+
+    let kts = kvs
+        .iter()
+        .map(|(x, v)| (x.clone(), v.ty().to_nir()))
+        .collect();
+
+    Ok(Nir::from_kind(NirKind::RecordType(kts)).to_type(k))
 }
 
 /// When all sub-expressions have been typed, check the remaining toplevel
@@ -32,7 +79,7 @@ pub fn mk_span_err<T, S: ToString>(span: Span, msg: S) -> Result<T, TypeError> {
 fn type_one_layer<'cx>(
     env: &TyEnv<'cx>,
     ekind: ExprKind<Tir<'cx, '_>>,
-    span: Span,
+    span: &Span,
 ) -> Result<Type<'cx>, TypeError> {
     let cx = env.cx();
     let span_err = |msg: &str| mk_span_err(span.clone(), msg);
@@ -69,10 +116,10 @@ fn type_one_layer<'cx>(
             let text_type = Type::from_builtin(cx, Builtin::Text);
             for contents in interpolated.iter() {
                 use InterpolatedTextContents::Expr;
-                if let Expr(x) = contents {
-                    if *x.ty() != text_type {
-                        return span_err("InvalidTextInterpolation");
-                    }
+                if let Expr(x) = contents
+                    && *x.ty() != text_type
+                {
+                    return span_err("InvalidTextInterpolation");
                 }
             }
             text_type
@@ -92,7 +139,7 @@ fn type_one_layer<'cx>(
             match t.kind() {
                 NirKind::ListType(..) => {}
                 _ => return span_err("InvalidListType"),
-            };
+            }
             t
         }
         ExprKind::NEListLit(xs) => {
@@ -112,54 +159,15 @@ fn type_one_layer<'cx>(
                 .app(t)
                 .to_type(Const::Type)
         }
-        ExprKind::RecordLit(kvs) => {
-            // An empty record type has type Type
-            let mut k = Const::Type;
-            for v in kvs.values() {
-                // Check that the fields have a valid kind
-                match v.ty().ty().as_const() {
-                    Some(c) => k = max(k, c),
-                    None => return mk_span_err(v.span(), "InvalidFieldType"),
-                }
-            }
-
-            let kts = kvs
-                .iter()
-                .map(|(x, v)| (x.clone(), v.ty().to_nir()))
-                .collect();
-
-            Nir::from_kind(NirKind::RecordType(kts)).to_type(k)
-        }
-        ExprKind::RecordType(kts) => {
-            // An empty record type has type Type
-            let mut k = Const::Type;
-            for t in kts.values() {
-                // Check the type is a Const and compute final type
-                match t.ty().as_const() {
-                    Some(c) => k = max(k, c),
-                    None => return mk_span_err(t.span(), "InvalidFieldType"),
-                }
-            }
-
-            Type::from_const(k)
-        }
-        ExprKind::UnionType(kts) => {
-            // An empty union type has type Type;
-            // an union type with only unary variants also has type Type
-            let mut k = Const::Type;
-            for t in kts.values() {
-                if let Some(t) = t {
-                    match t.ty().as_const() {
-                        Some(c) => k = max(k, c),
-                        None => {
-                            return mk_span_err(t.span(), "InvalidVariantType");
-                        }
-                    }
-                }
-            }
-
-            Type::from_const(k)
-        }
+        ExprKind::RecordLit(kvs) => type_record_lit(&kvs)?,
+        ExprKind::RecordType(kts) => Type::from_const(universe_of_fields(
+            kts.values(),
+            "InvalidFieldType",
+        )?),
+        ExprKind::UnionType(kts) => Type::from_const(universe_of_fields(
+            kts.values().flatten(),
+            "InvalidVariantType",
+        )?),
         ExprKind::Op(op) => typecheck_operation(env, span, op)?,
         ExprKind::Assert(t) => {
             let t = t.eval_to_type(env)?;
@@ -185,7 +193,7 @@ pub fn type_with<'cx, 'hir>(
     let tir = match hir.kind() {
         HirKind::Var(var) => Tir::from_hir(hir, env.lookup(*var)),
         HirKind::MissingVar(var) => mkerr(
-            ErrorBuilder::new(format!("unbound variable `{}`", var))
+            ErrorBuilder::new(format!("unbound variable `{var}`"))
                 .span_err(hir.span(), "not found in this scope")
                 .format(),
         )?,
@@ -224,9 +232,8 @@ pub fn type_with<'cx, 'hir>(
             let body = type_with(&body_env, body, None)?;
 
             let u_annot = annot.ty().as_const().unwrap();
-            let u_body = match body.ty().ty().as_const() {
-                Some(k) => k,
-                _ => return mk_span_err(hir.span(), "Invalid output type"),
+            let Some(u_body) = body.ty().ty().as_const() else {
+                return mk_span_err(hir.span(), "Invalid output type");
             };
             let u = function_check(u_annot, u_body).to_universe();
             let ty_hir = Hir::new(
@@ -258,31 +265,31 @@ pub fn type_with<'cx, 'hir>(
                 .as_ref()
                 .map(|t| type_with(env, t, None)?.eval_to_type(env))
                 .transpose()?;
-            let val = type_with(env, &val, val_annot)?;
+            let val = type_with(env, val, val_annot)?;
             let val_nf = val.eval(env);
-            let body_env = env.insert_value(&binder, val_nf, val.ty().clone());
+            let body_env = env.insert_value(binder, val_nf, val.ty().clone());
             let body = type_with(&body_env, body, None)?;
             let ty = body.ty().clone();
             Tir::from_hir(hir, ty)
         }
         HirKind::Expr(ekind) => {
             let ekind = ekind.traverse_ref(|e| type_with(env, e, None))?;
-            let ty = type_one_layer(env, ekind, hir.span())?;
+            let ty = type_one_layer(env, ekind, &hir.span())?;
             Tir::from_hir(hir, ty)
         }
     };
 
-    if let Some(annot) = annot {
-        if *tir.ty() != annot {
-            return mk_span_err(
-                hir.span(),
-                &format!(
-                    "annot mismatch: {} != {}",
-                    tir.ty().to_expr_tyenv(env),
-                    annot.to_expr_tyenv(env)
-                ),
-            );
-        }
+    if let Some(annot) = annot
+        && *tir.ty() != annot
+    {
+        return mk_span_err(
+            hir.span(),
+            format!(
+                "annot mismatch: {} != {}",
+                tir.ty().to_expr_tyenv(env),
+                annot.to_expr_tyenv(env)
+            ),
+        );
     }
 
     Ok(tir)

@@ -48,7 +48,7 @@ pub struct TextLit<'cx>(Vec<InterpolatedTextContents<Nir<'cx>>>);
 
 /// This represents a value in Weak Head Normal Form (WHNF). This means that the value is
 /// normalized up to the first constructor, but subexpressions may not be fully normalized.
-/// When all the Nirs in a NirKind are in WHNF, and recursively so, then the NirKind is in
+/// When all the Nirs in a `NirKind` are in WHNF, and recursively so, then the `NirKind` is in
 /// Normal Form (NF). This is because WHNF ensures that we have the first constructor of the NF; so
 /// if we have the first constructor of the NF at all levels, we actually have the NF.
 /// In particular, this means that once we get a `NirKind`, it can be considered immutable, and
@@ -95,40 +95,51 @@ pub enum NirKind<'cx> {
 
 impl<'cx> Nir<'cx> {
     /// Construct a Nir from a completely unnormalized expression.
+    #[must_use]
     pub fn new_thunk(env: NzEnv<'cx>, hir: Hir<'cx>) -> Self {
         Nir(Rc::new(lazy::Lazy::new(Thunk::new(env, hir))))
     }
     /// Construct a Nir from a partially normalized expression that's not in WHNF.
+    #[must_use]
     pub fn from_partial_expr(e: ExprKind<Self>) -> Self {
         Nir(Rc::new(lazy::Lazy::new(Thunk::from_partial_expr(e))))
     }
-    /// Make a Nir from a NirKind
+    /// Make a Nir from a `NirKind`
+    #[must_use]
     pub fn from_kind(v: NirKind<'cx>) -> Self {
         Nir(Rc::new(lazy::Lazy::new_completed(v)))
     }
+    #[must_use]
     pub fn from_const(c: Const) -> Self {
         Self::from_kind(NirKind::Const(c))
     }
+    #[must_use]
     pub fn from_builtin(cx: Ctxt<'cx>, b: Builtin) -> Self {
         Self::from_builtin_env(b, &NzEnv::new(cx))
     }
+    #[must_use]
     pub fn from_builtin_env(b: Builtin, env: &NzEnv<'cx>) -> Self {
         Nir::from_kind(NirKind::from_builtin_env(b, env.clone()))
     }
+    // Callers pass `Natural` and `Double` as well as strings, so the bound has
+    // to stay `ToString`; taking it by reference only moves the `&` to them.
+    #[expect(clippy::needless_pass_by_value)]
     pub fn from_text(txt: impl ToString) -> Self {
         Nir::from_kind(NirKind::TextLit(TextLit::from_text(txt.to_string())))
     }
 
+    #[must_use]
     pub fn as_const(&self) -> Option<Const> {
-        match &*self.kind() {
+        match self.kind() {
             NirKind::Const(c) => Some(*c),
             _ => None,
         }
     }
 
     /// This is what you want if you want to pattern-match on the value.
+    #[must_use]
     pub fn kind(&self) -> &NirKind<'cx> {
-        &*self.0
+        &self.0
     }
 
     /// The contents of a `Nir` are immutable and shared. If however we happen to be the sole
@@ -137,6 +148,7 @@ impl<'cx> Nir<'cx> {
         Rc::make_mut(&mut self.0).get_mut()
     }
     /// If we are the sole owner of this Nir, we can avoid a clone.
+    #[must_use]
     pub fn into_kind(self) -> NirKind<'cx> {
         match Rc::try_unwrap(self.0) {
             Ok(lazy) => lazy.into_inner(),
@@ -148,148 +160,172 @@ impl<'cx> Nir<'cx> {
         Type::new(self.clone(), u.into())
     }
     /// Converts a value back to the corresponding AST expression.
+    #[must_use]
     pub fn to_expr(&self, cx: Ctxt<'cx>, opts: ToExprOptions) -> Expr {
         self.to_hir_noenv().to_expr(cx, opts)
     }
+    #[must_use]
     pub fn to_expr_tyenv(&self, tyenv: &TyEnv<'cx>) -> Expr {
         self.to_hir(tyenv.as_varenv()).to_expr_tyenv(tyenv)
     }
 
+    #[must_use]
     pub fn app(&self, v: Self) -> Self {
         Nir::from_kind(self.app_to_kind(v))
     }
+    #[must_use]
     pub fn app_to_kind(&self, v: Self) -> NirKind<'cx> {
         apply_any(self, v)
     }
 
+    #[must_use]
     pub fn to_hir(&self, venv: VarEnv) -> Hir<'cx> {
-        let map_uniontype =
-            |kts: &HashMap<Label, Option<Nir<'cx>>>| -> ExprKind<Hir<'cx>> {
-                ExprKind::UnionType(
-                    kts.iter()
-                        .map(|(k, v)| {
-                            (k.clone(), v.as_ref().map(|v| v.to_hir(venv)))
-                        })
-                        .collect(),
-                )
-            };
-        let builtin =
-            |b| Hir::new(HirKind::Expr(ExprKind::Builtin(b)), Span::Artificial);
-
         let hir = match self.kind() {
             NirKind::Var(v) => HirKind::Var(venv.lookup(*v)),
             NirKind::AppliedBuiltin(closure) => closure.to_hirkind(venv),
-            self_kind => HirKind::Expr(match self_kind {
-                NirKind::Var(..) | NirKind::AppliedBuiltin(..) => {
-                    unreachable!()
-                }
-                NirKind::LamClosure {
-                    binder,
-                    annot,
-                    closure,
-                } => ExprKind::Lam(
-                    binder.to_label(),
-                    annot.to_hir(venv),
-                    closure.to_hir(venv),
-                ),
-                NirKind::PiClosure {
-                    binder,
-                    annot,
-                    closure,
-                } => ExprKind::Pi(
-                    binder.to_label(),
-                    annot.to_hir(venv),
-                    closure.to_hir(venv),
-                ),
-                NirKind::Const(c) => ExprKind::Const(*c),
-                NirKind::BuiltinType(b) => ExprKind::Builtin(*b),
-                NirKind::Num(l) => ExprKind::Num(l.clone()),
-                NirKind::OptionalType(t) => ExprKind::Op(OpKind::App(
-                    builtin(Builtin::Optional),
-                    t.to_hir(venv),
-                )),
-                NirKind::EmptyOptionalLit(n) => ExprKind::Op(OpKind::App(
-                    builtin(Builtin::OptionalNone),
-                    n.to_hir(venv),
-                )),
-                NirKind::NEOptionalLit(n) => ExprKind::SomeLit(n.to_hir(venv)),
-                NirKind::ListType(t) => ExprKind::Op(OpKind::App(
-                    builtin(Builtin::List),
-                    t.to_hir(venv),
-                )),
-                NirKind::EmptyListLit(n) => ExprKind::EmptyListLit(Hir::new(
-                    HirKind::Expr(ExprKind::Op(OpKind::App(
-                        builtin(Builtin::List),
-                        n.to_hir(venv),
-                    ))),
-                    Span::Artificial,
-                )),
-                NirKind::NEListLit(elts) => ExprKind::NEListLit(
-                    elts.iter().map(|v| v.to_hir(venv)).collect(),
-                ),
-                NirKind::TextLit(elts) => ExprKind::TextLit(
-                    elts.iter()
-                        .map(|t| t.map_ref(|v| v.to_hir(venv)))
-                        .collect(),
-                ),
-                NirKind::RecordLit(kvs) => ExprKind::RecordLit(
-                    kvs.iter()
-                        .map(|(k, v)| (k.clone(), v.to_hir(venv)))
-                        .collect(),
-                ),
-                NirKind::RecordType(kts) => ExprKind::RecordType(
-                    kts.iter()
-                        .map(|(k, v)| (k.clone(), v.to_hir(venv)))
-                        .collect(),
-                ),
-                NirKind::UnionType(kts) => map_uniontype(kts),
-                NirKind::UnionConstructor(l, kts) => {
-                    ExprKind::Op(OpKind::Field(
-                        Hir::new(
-                            HirKind::Expr(map_uniontype(kts)),
-                            Span::Artificial,
-                        ),
-                        l.clone(),
-                    ))
-                }
-                NirKind::UnionLit(l, v, kts) => ExprKind::Op(OpKind::App(
-                    Hir::new(
-                        HirKind::Expr(ExprKind::Op(OpKind::Field(
-                            Hir::new(
-                                HirKind::Expr(map_uniontype(kts)),
-                                Span::Artificial,
-                            ),
-                            l.clone(),
-                        ))),
-                        Span::Artificial,
-                    ),
-                    v.to_hir(venv),
-                )),
-                NirKind::Equivalence(x, y) => ExprKind::Op(OpKind::BinOp(
-                    BinOp::Equivalence,
-                    x.to_hir(venv),
-                    y.to_hir(venv),
-                )),
-                NirKind::Assert(x) => ExprKind::Assert(x.to_hir(venv)),
-                NirKind::Op(e) => ExprKind::Op(e.map_ref(|v| v.to_hir(venv))),
-            }),
+            self_kind => HirKind::Expr(kind_to_exprkind(self_kind, venv)),
         };
 
         Hir::new(hir, Span::Artificial)
     }
+    #[must_use]
     pub fn to_hir_noenv(&self) -> Hir<'cx> {
         self.to_hir(VarEnv::new())
     }
 }
 
+/// Rebuilds a union type from the alternatives a `NirKind` carries.
+fn map_uniontype<'cx>(
+    kts: &HashMap<Label, Option<Nir<'cx>>>,
+    venv: VarEnv,
+) -> ExprKind<Hir<'cx>> {
+    ExprKind::UnionType(
+        kts.iter()
+            .map(|(k, v)| (k.clone(), v.as_ref().map(|v| v.to_hir(venv))))
+            .collect(),
+    )
+}
+
+/// The union cases, which all have to rebuild the union type the value belongs
+/// to because a `Nir` only remembers the alternatives, not the original syntax.
+fn union_to_exprkind<'cx>(
+    kind: &NirKind<'cx>,
+    venv: VarEnv,
+) -> ExprKind<Hir<'cx>> {
+    let artificial = |k| Hir::new(HirKind::Expr(k), Span::Artificial);
+
+    match kind {
+        NirKind::UnionType(kts) => map_uniontype(kts, venv),
+        NirKind::UnionConstructor(l, kts) => ExprKind::Op(OpKind::Field(
+            artificial(map_uniontype(kts, venv)),
+            l.clone(),
+        )),
+        NirKind::UnionLit(l, v, kts) => ExprKind::Op(OpKind::App(
+            artificial(ExprKind::Op(OpKind::Field(
+                artificial(map_uniontype(kts, venv)),
+                l.clone(),
+            ))),
+            v.to_hir(venv),
+        )),
+        _ => unreachable!("not a union"),
+    }
+}
+
+/// The `NirKind` cases that map onto a plain `ExprKind`.
+///
+/// `Var` and `AppliedBuiltin` are handled by [`Nir::to_hir`] instead, because
+/// they become a `HirKind` that is not an `Expr`.
+fn kind_to_exprkind<'cx>(
+    kind: &NirKind<'cx>,
+    venv: VarEnv,
+) -> ExprKind<Hir<'cx>> {
+    let builtin =
+        |b| Hir::new(HirKind::Expr(ExprKind::Builtin(b)), Span::Artificial);
+
+    match kind {
+        NirKind::Var(..) | NirKind::AppliedBuiltin(..) => {
+            unreachable!()
+        }
+        NirKind::UnionType(..)
+        | NirKind::UnionConstructor(..)
+        | NirKind::UnionLit(..) => union_to_exprkind(kind, venv),
+        NirKind::LamClosure {
+            binder,
+            annot,
+            closure,
+        } => ExprKind::Lam(
+            binder.to_label(),
+            annot.to_hir(venv),
+            closure.to_hir(venv),
+        ),
+        NirKind::PiClosure {
+            binder,
+            annot,
+            closure,
+        } => ExprKind::Pi(
+            binder.to_label(),
+            annot.to_hir(venv),
+            closure.to_hir(venv),
+        ),
+        NirKind::Const(c) => ExprKind::Const(*c),
+        NirKind::BuiltinType(b) => ExprKind::Builtin(*b),
+        NirKind::Num(l) => ExprKind::Num(l.clone()),
+        NirKind::OptionalType(t) => ExprKind::Op(OpKind::App(
+            builtin(Builtin::Optional),
+            t.to_hir(venv),
+        )),
+        NirKind::EmptyOptionalLit(n) => ExprKind::Op(OpKind::App(
+            builtin(Builtin::OptionalNone),
+            n.to_hir(venv),
+        )),
+        NirKind::NEOptionalLit(n) => ExprKind::SomeLit(n.to_hir(venv)),
+        NirKind::ListType(t) => {
+            ExprKind::Op(OpKind::App(builtin(Builtin::List), t.to_hir(venv)))
+        }
+        NirKind::EmptyListLit(n) => ExprKind::EmptyListLit(Hir::new(
+            HirKind::Expr(ExprKind::Op(OpKind::App(
+                builtin(Builtin::List),
+                n.to_hir(venv),
+            ))),
+            Span::Artificial,
+        )),
+        NirKind::NEListLit(elts) => {
+            ExprKind::NEListLit(elts.iter().map(|v| v.to_hir(venv)).collect())
+        }
+        NirKind::TextLit(elts) => ExprKind::TextLit(
+            elts.iter().map(|t| t.map_ref(|v| v.to_hir(venv))).collect(),
+        ),
+        NirKind::RecordLit(kvs) => ExprKind::RecordLit(
+            kvs.iter()
+                .map(|(k, v)| (k.clone(), v.to_hir(venv)))
+                .collect(),
+        ),
+        NirKind::RecordType(kts) => ExprKind::RecordType(
+            kts.iter()
+                .map(|(k, v)| (k.clone(), v.to_hir(venv)))
+                .collect(),
+        ),
+        NirKind::Equivalence(x, y) => ExprKind::Op(OpKind::BinOp(
+            BinOp::Equivalence,
+            x.to_hir(venv),
+            y.to_hir(venv),
+        )),
+        NirKind::Assert(x) => ExprKind::Assert(x.to_hir(venv)),
+        NirKind::Op(e) => ExprKind::Op(e.map_ref(|v| v.to_hir(venv))),
+    }
+}
+
 impl<'cx> NirKind<'cx> {
+    #[must_use]
     pub fn into_nir(self) -> Nir<'cx> {
         Nir::from_kind(self)
     }
 
+    #[must_use]
     pub fn from_builtin(cx: Ctxt<'cx>, b: Builtin) -> Self {
         NirKind::from_builtin_env(b, NzEnv::new(cx))
     }
+    #[must_use]
     pub fn from_builtin_env(b: Builtin, env: NzEnv<'cx>) -> Self {
         BuiltinClosure::new(b, env)
     }
@@ -311,6 +347,7 @@ impl<'cx> Thunk<'cx> {
 }
 
 impl<'cx> Closure<'cx> {
+    #[must_use]
     pub fn new(env: &NzEnv<'cx>, body: Hir<'cx>) -> Self {
         Closure::Closure {
             env: env.clone(),
@@ -318,10 +355,12 @@ impl<'cx> Closure<'cx> {
         }
     }
     /// New closure that ignores its argument
+    #[must_use]
     pub fn new_constant(body: Nir<'cx>) -> Self {
         Closure::ConstantClosure { body }
     }
 
+    #[must_use]
     pub fn apply(&self, val: Nir<'cx>) -> Nir<'cx> {
         match self {
             Closure::Closure { env, body, .. } => {
@@ -340,12 +379,14 @@ impl<'cx> Closure<'cx> {
     }
 
     /// Convert this closure to a Hir expression
+    #[must_use]
     pub fn to_hir(&self, venv: VarEnv) -> Hir<'cx> {
         self.apply_var(NzVar::new(venv.size()))
             .to_hir(venv.insert())
     }
     /// If the closure variable is free in the closure, return `None`. Otherwise, return the value
     /// with that free variable remove.
+    #[must_use]
     pub fn remove_binder(&self) -> Option<Nir<'cx>> {
         match self {
             Closure::Closure { .. } => {
@@ -374,21 +415,26 @@ impl<'cx> TextLit<'cx> {
     ) -> Self {
         TextLit(squash_textlit(elts))
     }
+    #[must_use]
     pub fn interpolate(v: Nir<'cx>) -> Self {
         TextLit(vec![InterpolatedTextContents::Expr(v)])
     }
+    #[must_use]
     pub fn from_text(s: String) -> Self {
         TextLit(vec![InterpolatedTextContents::Text(s)])
     }
 
+    #[must_use]
     pub fn concat(&self, other: &Self) -> Self {
         TextLit::new(self.iter().chain(other.iter()).cloned())
     }
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
     /// If the literal consists of only one interpolation and not text, return the interpolated
     /// value.
+    #[must_use]
     pub fn as_single_expr(&self) -> Option<&Nir<'cx>> {
         use InterpolatedTextContents::Expr;
         if let [Expr(v)] = self.0.as_slice() {
@@ -398,6 +444,7 @@ impl<'cx> TextLit<'cx> {
         }
     }
     /// If there are no interpolations, return the corresponding text value.
+    #[must_use]
     pub fn as_text(&self) -> Option<String> {
         use InterpolatedTextContents::Text;
         if self.is_empty() {
@@ -422,34 +469,34 @@ impl<'cx> lazy::Eval<NirKind<'cx>> for Thunk<'cx> {
 }
 
 /// Compare two values for equality modulo alpha/beta-equivalence.
-impl<'cx> std::cmp::PartialEq for Nir<'cx> {
+impl std::cmp::PartialEq for Nir<'_> {
     fn eq(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.0, &other.0) || self.kind() == other.kind()
     }
 }
-impl<'cx> std::cmp::Eq for Nir<'cx> {}
+impl std::cmp::Eq for Nir<'_> {}
 
-impl<'cx> std::cmp::PartialEq for Thunk<'cx> {
+impl std::cmp::PartialEq for Thunk<'_> {
     fn eq(&self, _other: &Self) -> bool {
         unreachable!(
             "Trying to compare thunks but we should only compare WHNFs"
         )
     }
 }
-impl<'cx> std::cmp::Eq for Thunk<'cx> {}
+impl std::cmp::Eq for Thunk<'_> {}
 
-impl<'cx> std::cmp::PartialEq for Closure<'cx> {
+impl std::cmp::PartialEq for Closure<'_> {
     fn eq(&self, other: &Self) -> bool {
         let v = NzVar::fresh();
         self.apply_var(v) == other.apply_var(v)
     }
 }
-impl<'cx> std::cmp::Eq for Closure<'cx> {}
+impl std::cmp::Eq for Closure<'_> {}
 
-impl<'cx> std::fmt::Debug for Nir<'cx> {
+impl std::fmt::Debug for Nir<'_> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let NirKind::Const(c) = self.kind() {
-            return write!(fmt, "{:?}", c);
+            return write!(fmt, "{c:?}");
         }
         let mut x = fmt.debug_struct("Nir");
         x.field("kind", self.kind());

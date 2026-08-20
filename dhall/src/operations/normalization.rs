@@ -10,19 +10,26 @@ use crate::semantics::{
 };
 use crate::syntax::{ExprKind, Label, NumKind};
 
-fn normalize_binop<'cx>(o: BinOp, x: Nir<'cx>, y: Nir<'cx>) -> Ret<'cx> {
+/// The simplification rules for `&&`, `||`, `==` and `!=`.
+// Operators that coincidentally share a result — `True && x` and `True == x`
+// both reduce to `x` — stay separate, so that each operator's rules read as one
+// block. Where the two sides of a *single* operator share one, they are merged.
+#[expect(clippy::match_same_arms)]
+fn normalize_bool_binop<'cx>(o: BinOp, x: Nir<'cx>, y: Nir<'cx>) -> Ret<'cx> {
     use BinOp::*;
-    use NirKind::{EmptyListLit, NEListLit, Num, RecordLit, RecordType};
-    use NumKind::{Bool, Natural};
+    use NirKind::Num;
+    use NumKind::Bool;
 
     match (o, x.kind(), y.kind()) {
         (BoolAnd, Num(Bool(true)), _) => ret_nir(y),
         (BoolAnd, _, Num(Bool(true))) => ret_nir(x),
-        (BoolAnd, Num(Bool(false)), _) => ret_kind(Num(Bool(false))),
-        (BoolAnd, _, Num(Bool(false))) => ret_kind(Num(Bool(false))),
+        (BoolAnd, Num(Bool(false)), _) | (BoolAnd, _, Num(Bool(false))) => {
+            ret_kind(Num(Bool(false)))
+        }
         (BoolAnd, _, _) if x == y => ret_nir(x),
-        (BoolOr, Num(Bool(true)), _) => ret_kind(Num(Bool(true))),
-        (BoolOr, _, Num(Bool(true))) => ret_kind(Num(Bool(true))),
+        (BoolOr, Num(Bool(true)), _) | (BoolOr, _, Num(Bool(true))) => {
+            ret_kind(Num(Bool(true)))
+        }
         (BoolOr, Num(Bool(false)), _) => ret_nir(y),
         (BoolOr, _, Num(Bool(false))) => ret_nir(x),
         (BoolOr, _, _) if x == y => ret_nir(x),
@@ -34,6 +41,21 @@ fn normalize_binop<'cx>(o: BinOp, x: Nir<'cx>, y: Nir<'cx>) -> Ret<'cx> {
         (BoolNE, _, Num(Bool(false))) => ret_nir(x),
         (BoolNE, Num(Bool(x)), Num(Bool(y))) => ret_kind(Num(Bool(x != y))),
         (BoolNE, _, _) if x == y => ret_kind(Num(Bool(false))),
+        _ => ret_op(OpKind::BinOp(o, x, y)),
+    }
+}
+
+// A simplification table, one operator at a time. The boolean operators are in
+// `normalize_bool_binop`; everything else is here.
+fn normalize_binop<'cx>(o: BinOp, x: Nir<'cx>, y: Nir<'cx>) -> Ret<'cx> {
+    use BinOp::*;
+    use NirKind::{EmptyListLit, NEListLit, Num, RecordLit, RecordType};
+    use NumKind::Natural;
+
+    match (o, x.kind(), y.kind()) {
+        (BoolAnd | BoolOr | BoolEQ | BoolNE, _, _) => {
+            normalize_bool_binop(o, x, y)
+        }
 
         (NaturalPlus, Num(Natural(n)), _) if n.is_zero() => ret_nir(y),
         (NaturalPlus, _, Num(Natural(n))) if n.is_zero() => ret_nir(x),
@@ -201,12 +223,10 @@ fn normalize_field<'cx>(v: &Nir<'cx>, field: &Label) -> Ret<'cx> {
     }
 }
 
-pub fn normalize_operation<'cx>(opkind: OpKind<Nir<'cx>>) -> Ret<'cx> {
+#[must_use]
+pub fn normalize_operation(opkind: OpKind<Nir<'_>>) -> Ret<'_> {
     use self::BinOp::RightBiasedRecordMerge;
-    use NirKind::{
-        EmptyListLit, EmptyOptionalLit, NEListLit, NEOptionalLit, Num, Op,
-        RecordLit, RecordType, UnionConstructor, UnionLit,
-    };
+    use NirKind::{Num, Op, RecordLit, RecordType};
     use NumKind::Bool;
     use OpKind::*;
 
@@ -227,50 +247,8 @@ pub fn normalize_operation<'cx>(opkind: OpKind<Nir<'cx>>) -> Ret<'cx> {
                 }
             }
         }
-        Merge(handlers, variant, ty) => match handlers.kind() {
-            RecordLit(kvs) => match variant.kind() {
-                UnionConstructor(l, _) => match kvs.get(l) {
-                    Some(h) => ret_ref(h),
-                    None => ret_op(Merge(handlers, variant, ty)),
-                },
-                UnionLit(l, v, _) => match kvs.get(l) {
-                    Some(h) => ret_kind(h.app_to_kind(v.clone())),
-                    None => ret_op(Merge(handlers, variant, ty)),
-                },
-                EmptyOptionalLit(_) => match kvs.get("None") {
-                    Some(h) => ret_ref(h),
-                    None => ret_op(Merge(handlers, variant, ty)),
-                },
-                NEOptionalLit(v) => match kvs.get("Some") {
-                    Some(h) => ret_kind(h.app_to_kind(v.clone())),
-                    None => ret_op(Merge(handlers, variant, ty)),
-                },
-                _ => ret_op(Merge(handlers, variant, ty)),
-            },
-            _ => ret_op(Merge(handlers, variant, ty)),
-        },
-        ToMap(v, annot) => match v.kind() {
-            RecordLit(kvs) if kvs.is_empty() => {
-                match annot.as_ref().map(|v| v.kind()) {
-                    Some(NirKind::ListType(t)) => {
-                        ret_kind(EmptyListLit(t.clone()))
-                    }
-                    _ => ret_op(ToMap(v, annot)),
-                }
-            }
-            RecordLit(kvs) => ret_kind(NEListLit(
-                kvs.iter()
-                    .sorted_by_key(|(k, _)| *k)
-                    .map(|(k, v)| {
-                        let mut rec = HashMap::new();
-                        rec.insert("mapKey".into(), Nir::from_text(k));
-                        rec.insert("mapValue".into(), v.clone());
-                        Nir::from_kind(NirKind::RecordLit(rec))
-                    })
-                    .collect(),
-            )),
-            _ => ret_op(ToMap(v, annot)),
-        },
+        Merge(handlers, variant, ty) => normalize_merge(handlers, variant, ty),
+        ToMap(v, annot) => normalize_tomap(v, annot),
         Field(v, field) => normalize_field(&v, &field),
         Projection(_, ls) if ls.is_empty() => {
             ret_kind(RecordLit(HashMap::new()))
@@ -310,37 +288,114 @@ pub fn normalize_operation<'cx>(opkind: OpKind<Nir<'cx>>) -> Ret<'cx> {
             )),
             _ => ret_op(ProjectionByExpr(v, t)),
         },
-        With(mut record, labels, expr) => {
-            let mut labels = labels.into_iter();
-            let mut current = &mut record;
-            // We dig through the current record with the provided labels.
-            while let RecordLit(kvs) = current.kind_mut() {
-                if let Some(label) = labels.next() {
-                    // Get existing entry or insert empty record into it.
-                    let nir = kvs.entry(label).or_insert_with(|| {
-                        Nir::from_kind(RecordLit(HashMap::new()))
-                    });
-                    // Disgusting, but the normal assignment works with -Zpolonius, so this
-                    // is safe. See https://github.com/rust-lang/rust/issues/70255 .
-                    current = unsafe { &mut *(nir as *mut _) };
-                } else {
-                    break;
-                }
-            }
-
-            // If there are still some fields to dig through, we need to create a `with` expression
-            // with the remaining fields.
-            let labels: Vec<_> = labels.collect();
-            *current = if labels.is_empty() {
-                expr
-            } else {
-                Nir::from_kind(Op(OpKind::With(current.clone(), labels, expr)))
-            };
-
-            ret_nir(record)
-        }
+        With(record, labels, expr) => normalize_with(record, labels, expr),
         Completion(..) => {
             unreachable!("This case should have been handled in resolution")
         }
     }
+}
+
+/// `merge handlers variant`, which picks the handler matching the variant the
+/// union or optional actually holds.
+fn normalize_merge<'cx>(
+    handlers: Nir<'cx>,
+    variant: Nir<'cx>,
+    ty: Option<Nir<'cx>>,
+) -> Ret<'cx> {
+    use NirKind::{
+        EmptyOptionalLit, NEOptionalLit, UnionConstructor, UnionLit,
+    };
+    use OpKind::Merge;
+
+    let NirKind::RecordLit(kvs) = handlers.kind() else {
+        return ret_op(Merge(handlers, variant, ty));
+    };
+    // A handler that is not there yet leaves the `merge` unreduced rather than
+    // failing; the typechecker is what rejects a genuinely missing handler.
+    match variant.kind() {
+        UnionConstructor(l, _) => match kvs.get(l) {
+            Some(h) => ret_ref(h),
+            None => ret_op(Merge(handlers, variant, ty)),
+        },
+        UnionLit(l, v, _) => match kvs.get(l) {
+            Some(h) => ret_kind(h.app_to_kind(v.clone())),
+            None => ret_op(Merge(handlers, variant, ty)),
+        },
+        EmptyOptionalLit(_) => match kvs.get("None") {
+            Some(h) => ret_ref(h),
+            None => ret_op(Merge(handlers, variant, ty)),
+        },
+        NEOptionalLit(v) => match kvs.get("Some") {
+            Some(h) => ret_kind(h.app_to_kind(v.clone())),
+            None => ret_op(Merge(handlers, variant, ty)),
+        },
+        _ => ret_op(Merge(handlers, variant, ty)),
+    }
+}
+
+/// `toMap record`, which turns a record into the list of `mapKey`/`mapValue`
+/// pairs the standard defines, in key order.
+fn normalize_tomap<'cx>(v: Nir<'cx>, annot: Option<Nir<'cx>>) -> Ret<'cx> {
+    use NirKind::{EmptyListLit, NEListLit, RecordLit};
+    use OpKind::ToMap;
+
+    match v.kind() {
+        RecordLit(kvs) if kvs.is_empty() => {
+            // An empty record carries no element type, so only the annotation
+            // can say what the empty list is a list of.
+            match annot.as_ref().map(Nir::kind) {
+                Some(NirKind::ListType(t)) => ret_kind(EmptyListLit(t.clone())),
+                _ => ret_op(ToMap(v, annot)),
+            }
+        }
+        RecordLit(kvs) => ret_kind(NEListLit(
+            kvs.iter()
+                .sorted_by_key(|(k, _)| *k)
+                .map(|(k, v)| {
+                    let mut rec = HashMap::new();
+                    rec.insert("mapKey".into(), Nir::from_text(k));
+                    rec.insert("mapValue".into(), v.clone());
+                    Nir::from_kind(NirKind::RecordLit(rec))
+                })
+                .collect(),
+        )),
+        _ => ret_op(ToMap(v, annot)),
+    }
+}
+
+/// `record with a.b.c = expr`, which replaces one nested field.
+fn normalize_with<'cx>(
+    mut record: Nir<'cx>,
+    labels: Vec<Label>,
+    expr: Nir<'cx>,
+) -> Ret<'cx> {
+    use NirKind::{Op, RecordLit};
+
+    let mut labels = labels.into_iter();
+    let mut current = &mut record;
+    // We dig through the current record with the provided labels.
+    while let RecordLit(kvs) = current.kind_mut() {
+        if let Some(label) = labels.next() {
+            // Get existing entry or insert empty record into it.
+            let nir = kvs
+                .entry(label)
+                .or_insert_with(|| Nir::from_kind(RecordLit(HashMap::new())));
+            // Disgusting, but the normal assignment works with -Zpolonius, so this
+            // is safe. See https://github.com/rust-lang/rust/issues/70255 .
+            current = unsafe { &mut *std::ptr::from_mut(nir) };
+        } else {
+            break;
+        }
+    }
+
+    // If there are still some fields to dig through, we need to create a `with` expression
+    // with the remaining fields.
+    let labels: Vec<_> = labels.collect();
+    *current = if labels.is_empty() {
+        expr
+    } else {
+        Nir::from_kind(Op(OpKind::With(current.clone(), labels, expr)))
+    };
+
+    ret_nir(record)
 }

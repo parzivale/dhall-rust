@@ -31,9 +31,11 @@ impl std::borrow::Borrow<str> for Label {
 }
 
 impl Label {
+    #[must_use]
     pub fn from_str(s: &str) -> Label {
         Label(s.into())
     }
+    #[must_use]
     pub fn as_ref(&self) -> &str {
         self.0.as_ref()
     }

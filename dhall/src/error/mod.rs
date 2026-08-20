@@ -10,7 +10,14 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub struct Error {
-    kind: ErrorKind,
+    /// Boxed to keep `Error` small.
+    ///
+    /// `ErrorKind` is dominated by its rarely-taken variants — a `pest`
+    /// `ParseError` alone is over a hundred bytes — and it rides in the `Err`
+    /// arm of nearly every function here. Indirection keeps the common `Ok`
+    /// path cheap to move at the cost of one allocation when something has
+    /// already gone wrong.
+    kind: Box<ErrorKind>,
     /// Whether the `?` operator may recover from this error.
     ///
     /// Carried alongside the kind because a failed import is re-wrapped as a
@@ -82,6 +89,7 @@ pub enum CacheError {
 }
 
 impl Error {
+    #[must_use]
     pub fn new(kind: ErrorKind) -> Self {
         // Only an import that could not be *retrieved* is recoverable. One that
         // was retrieved but does not parse or typecheck, a cyclic import, and a
@@ -96,12 +104,17 @@ impl Error {
                         | ImportError::MissingHome
                 )
         );
-        Error { kind, recoverable }
+        Error {
+            kind: Box::new(kind),
+            recoverable,
+        }
     }
+    #[must_use]
     pub fn kind(&self) -> &ErrorKind {
         &self.kind
     }
     /// Whether the `?` operator may recover from this error.
+    #[must_use]
     pub fn is_recoverable(&self) -> bool {
         self.recoverable
     }
@@ -109,6 +122,7 @@ impl Error {
     ///
     /// For re-wrapping a failure in a more informative error without deciding
     /// afresh whether `?` may swallow it.
+    #[must_use]
     pub fn inheriting_recoverability(mut self, original: &Error) -> Self {
         self.recoverable = original.recoverable;
         self
@@ -116,6 +130,7 @@ impl Error {
 }
 
 impl TypeError {
+    #[must_use]
     pub fn new(message: TypeMessage) -> Self {
         TypeError { message }
     }
@@ -144,7 +159,7 @@ fn fmt_import_target(target: &ImportTarget<()>) -> String {
                 url.path.file_path.join("/")
             )
         }
-        ImportTarget::Env(name) => format!("env:{}", name),
+        ImportTarget::Env(name) => format!("env:{name}"),
         ImportTarget::Missing => "missing".to_string(),
     }
 }
@@ -168,11 +183,10 @@ impl std::fmt::Display for ImportError {
             ),
             ImportError::CorsRejected { parent, child } => write!(
                 f,
-                "{} does not grant {} access via Access-Control-Allow-Origin",
-                child, parent
+                "{child} does not grant {parent} access via Access-Control-Allow-Origin"
             ),
             ImportError::RemoteImportsDisabled { location } => {
-                write!(f, "remote imports are disabled: {}", location)
+                write!(f, "remote imports are disabled: {location}")
             }
             ImportError::UnexpectedImport(import) => write!(
                 f,
@@ -183,15 +197,14 @@ impl std::fmt::Display for ImportError {
             ImportError::ImportCycle(stack, location) => {
                 write!(
                     f,
-                    "cyclic import: {} is already being resolved",
-                    location
+                    "cyclic import: {location} is already being resolved"
                 )?;
                 for entry in stack.iter().rev() {
-                    write!(f, "\n  ... which was imported by {}", entry)?;
+                    write!(f, "\n  ... which was imported by {entry}")?;
                 }
                 Ok(())
             }
-            ImportError::Url(err) => write!(f, "invalid import URL: {}", err),
+            ImportError::Url(err) => write!(f, "invalid import URL: {err}"),
         }
     }
 }
@@ -200,9 +213,9 @@ impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         use TypeMessage::*;
         let msg = match &self.message {
-            Custom(s) => format!("Type error: {}", s),
+            Custom(s) => format!("Type error: {s}"),
         };
-        write!(f, "{}", msg)
+        write!(f, "{msg}")
     }
 }
 
@@ -211,9 +224,9 @@ impl std::error::Error for TypeError {}
 impl std::fmt::Display for EncodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let msg = match self {
-            EncodeError::CBORError(e) => format!("Encode error: {}", e),
+            EncodeError::CBORError(e) => format!("Encode error: {e}"),
         };
-        write!(f, "{}", msg)
+        write!(f, "{msg}")
     }
 }
 
@@ -221,14 +234,14 @@ impl std::error::Error for EncodeError {}
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match &self.kind {
-            ErrorKind::IO(err) => write!(f, "{}", err),
-            ErrorKind::Parse(err) => write!(f, "{}", err),
-            ErrorKind::Decode(err) => write!(f, "{:?}", err),
-            ErrorKind::Encode(err) => write!(f, "{:?}", err),
-            ErrorKind::Resolve(err) => write!(f, "{}", err),
-            ErrorKind::Typecheck(err) => write!(f, "{}", err),
-            ErrorKind::Cache(err) => write!(f, "{:?}", err),
+        match &*self.kind {
+            ErrorKind::IO(err) => write!(f, "{err}"),
+            ErrorKind::Parse(err) => write!(f, "{err}"),
+            ErrorKind::Decode(err) => write!(f, "{err:?}"),
+            ErrorKind::Encode(err) => write!(f, "{err:?}"),
+            ErrorKind::Resolve(err) => write!(f, "{err}"),
+            ErrorKind::Typecheck(err) => write!(f, "{err}"),
+            ErrorKind::Cache(err) => write!(f, "{err:?}"),
         }
     }
 }
