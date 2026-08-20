@@ -6,16 +6,21 @@
 # Replaces the old .github/workflows/coverage.yml, which used nightly's
 # `-Zprofile`. That was removed from rustc, which is why the workflow had been
 # sitting at `if: false` with "it's broken, don't know how to fix".
-{ pkgs, package, dhall-lang }:
+{
+  pkgs,
+  package,
+  dhall-lang,
+}:
 
 let
   proxy = import ./spoof-proxy.nix { inherit pkgs; };
   llvm = pkgs.llvmPackages.bintools-unwrapped;
-in package.overrideAttrs (old: {
+in
+package.overrideAttrs (old: {
   pname = "sessiond-dhall-rust-coverage";
 
-  nativeBuildInputs = (old.nativeBuildInputs or [ ])
-    ++ proxy.nativeBuildInputs ++ [ pkgs.cargo-llvm-cov ];
+  nativeBuildInputs =
+    (old.nativeBuildInputs or [ ]) ++ proxy.nativeBuildInputs ++ [ pkgs.cargo-llvm-cov ];
 
   DHALL_LANG_DIR = dhall-lang;
 

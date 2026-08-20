@@ -9,10 +9,14 @@
 let
   spoofAddon = ../spoof-imports.py;
   port = "8080";
-in {
+in
+{
   # mitmproxy for the proxy; git because the grammar-sync test shells out to
   # `git diff --no-index`.
-  nativeBuildInputs = [ pkgs.mitmproxy pkgs.git ];
+  nativeBuildInputs = [
+    pkgs.mitmproxy
+    pkgs.git
+  ];
 
   setup = ''
     export HOME="$TMPDIR/home"

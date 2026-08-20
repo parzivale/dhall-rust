@@ -6,11 +6,20 @@ let
 
   src = lib.cleanSourceWith {
     src = ../..;
-    filter = path: type:
-      let base = baseNameOf (toString path);
-      in !(builtins.elem base [ "target" "dhall-lang" ".git" "result" ]);
+    filter =
+      path: type:
+      let
+        base = baseNameOf (toString path);
+      in
+      !(builtins.elem base [
+        "target"
+        "dhall-lang"
+        ".git"
+        "result"
+      ]);
   };
-in pkgs.rustPlatform.buildRustPackage {
+in
+pkgs.rustPlatform.buildRustPackage {
   pname = "sessiond-dhall-rust";
   version = "1.0.0";
   inherit src;

@@ -40,8 +40,7 @@ pkgs.mkShell {
   # than put on PATH: llvmPackages.bintools also carries a linker, which would
   # shadow the one the normal build uses.
   LLVM_COV = "${pkgs.llvmPackages.bintools-unwrapped}/bin/llvm-cov";
-  LLVM_PROFDATA =
-    "${pkgs.llvmPackages.bintools-unwrapped}/bin/llvm-profdata";
+  LLVM_PROFDATA = "${pkgs.llvmPackages.bintools-unwrapped}/bin/llvm-profdata";
 
   # The spec suite reads the standard tests from here. Pointing it at the pinned
   # input is what lets ./dhall-lang stay out of the working tree entirely -- see
