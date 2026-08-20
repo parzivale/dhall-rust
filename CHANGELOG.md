@@ -1,8 +1,11 @@
 # Changelog
 
-#### [Unreleased]
+#### [1.0.1] - 2026-08-20
 
-- BREAKING CHANGE: the crates are edition 2024 and so need Rust 1.85 or later
+- BREAKING CHANGE: the crates are edition 2024 and so need Rust 1.85 or later.
+  Note this is a patch release despite that: the public API is unchanged, which
+  `cargo semver-checks` confirms, but a consumer on an older toolchain will
+  fail to build
 - `clippy::pedantic` is configured for the workspace. Nothing runs clippy in CI
   yet, so it is a signal rather than a gate
 - The flake exposes `lib.toDhall`, which converts a Nix value to Dhall source
@@ -234,6 +237,7 @@
 - Initial release
 
 <!-- next-url -->
+[1.0.1]: https://github.com/parzivale/dhall-rust/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/parzivale/dhall-rust/releases/tag/v1.0.0
 [0.13.0]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.12.1...serde_dhall-v0.13.0
 [0.12.1]: https://github.com/Nadrieril/dhall-rust/compare/serde_dhall-v0.12.0...serde_dhall-v0.12.1
