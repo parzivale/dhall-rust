@@ -1,5 +1,38 @@
 # Changelog
 
+#### [3.0.0] - 2026-08-20
+
+##### Read this before upgrading
+
+- BREAKING CHANGE: **`Span::make` takes an `Arc<str>` rather than an `Rc<str>`.**
+  Only the parser constructs a `ParsedSpan`, so this is unlikely to reach you
+  unless you drive the parser yourself; if it does, the argument's type is the
+  whole of the fix.
+
+##### Added
+
+- `Expr` is `Send` and `Sync`, and so is `serde_dhall::Function`. A parsed
+  function can now be held in a type that crosses threads -- a configuration
+  owned by a daemon, say -- which the `Rc` behind it used to rule out. There
+  are tests asserting both, so it stays that way.
+
+  `Nir` and `Value` are unaffected: they hold `Rc<Lazy<..>>` and `OnceCell` for
+  lazy normalization, which is interior mutability rather than a shared string,
+  and a separate problem.
+- `Label::from_static`, which builds a label from a string literal without
+  allocating, whatever its length.
+
+##### Changed
+
+- `Label` is backed by `SmolStr` instead of `Rc<str>`. Labels are identifiers,
+  so they are nearly always within its 23-byte inline capacity and cost no
+  allocation and no refcount at all; longer ones fall back to an `Arc<str>`.
+  `size_of::<Label>()` is unchanged at 24 bytes. This is what makes `Expr`
+  thread-safe. It is not expected to cost anything on the hot path, but that
+  has not been measured
+- `cargo clippy` runs in the flake checks, so the workspace `[lints.clippy]`
+  table is enforced rather than advisory
+
 #### [2.1.0] - 2026-08-20
 
 - Operators are parsed with `pest`'s `PrattParser` rather than the deprecated
