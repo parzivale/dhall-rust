@@ -1,5 +1,17 @@
 # Changelog
 
+#### [2.1.0] - 2026-08-20
+
+- Operators are parsed with `pest`'s `PrattParser` rather than the deprecated
+  `PrecClimber`. Precedence climbing is Pratt parsing restricted to infix
+  operators, and Dhall's thirteen operators are all infix and left-associative,
+  so the two agree here: the operator table translated positionally and the
+  spec suite's 220 operator, precedence and associativity cases pass unchanged.
+  `pest_consume`'s `#[prec_climb]` attribute only accepts a `PrecClimber`, so
+  the parser now calls `PrattParser` directly in its place
+- With that, `cargo clippy --workspace --all-targets` is clean under
+  `--all-features`, default features and `--no-default-features` alike
+
 #### [2.0.0] - 2026-08-20
 
 ##### Read this before upgrading

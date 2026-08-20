@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/sessiond-serde-dhall/2.0.0")]
+#![doc(html_root_url = "https://docs.rs/sessiond-serde-dhall/2.1.0")]
 #![warn(missing_docs, rustdoc::missing_doc_code_examples)]
 //! [Dhall][dhall] is a programmable configuration language that provides a non-repetitive
 //! alternative to JSON and YAML.

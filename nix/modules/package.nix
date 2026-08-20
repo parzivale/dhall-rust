@@ -22,7 +22,7 @@ in
 pkgs.rustPlatform.buildRustPackage {
   pname = "sessiond-dhall-rust";
   # Keep in step with the crate versions; nothing checks this automatically.
-  version = "2.0.0";
+  version = "2.1.0";
   inherit src;
 
   cargoLock.lockFile = ../../Cargo.lock;
