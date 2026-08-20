@@ -1,5 +1,17 @@
 # Changelog
 
+#### [Unreleased]
+
+- BREAKING CHANGE: the crates are edition 2024 and so need Rust 1.85 or later
+- `clippy::pedantic` is configured for the workspace. Nothing runs clippy in CI
+  yet, so it is a signal rather than a gate
+- The flake exposes `lib.toDhall`, which converts a Nix value to Dhall source
+  the way `builtins.toJSON` converts one to JSON, and `lib.lambda` for the case
+  where some of the values are not known until the Dhall function is applied.
+  Neither is part of the Rust crates
+- `nix fmt` formats the Nix, and `nix flake check` now checks that it is
+  formatted alongside the Rust
+
 #### [1.0.0] - 2026-08-19
 
 ##### Read this before upgrading

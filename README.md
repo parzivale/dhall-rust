@@ -168,9 +168,10 @@ all — that also drops the dependency for `wasm32`, which cannot use it.
 
 ### Toolchain
 
-The nix devshell pins the Rust toolchain used to build and test this project.
-There is no separately verified minimum supported version; the `1.76.0` that
-used to be documented here was checked by a CI matrix that no longer exists.
+The crates are edition 2024, so they need Rust 1.85 or later. That floor comes
+from the edition rather than from a CI matrix, and nothing verifies a lower
+bound beyond it: the nix devshell pins one toolchain, and that is what is
+tested.
 
 ## Standard-compliance
 
