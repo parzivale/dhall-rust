@@ -6,7 +6,12 @@
 # The cases that must be rejected are asserted here instead, since a throw is
 # not something a Dhall file can show.
 let
-  inherit (import ./to-dhall.nix) toDhall lambda raw;
+  inherit (import ./to-dhall.nix)
+    toDhall
+    lambda
+    raw
+    text
+    ;
 
   # Forces `v` and expects the conversion to have thrown.
   rejects =
@@ -43,6 +48,8 @@ let
     }))
     (rejects "a lambda body that is not a function" (toDhall (lambda "x" "Natural" 1)))
     (rejects "a parameter type that is neither source nor an attrset" (toDhall (lambda "x" 1 (x: x))))
+    (rejects "a text part that is neither a string nor raw" (toDhall (text [ 1 ])))
+    (rejects "text given something other than a list" (toDhall (text "not a list")))
   ];
 
   value =
@@ -96,7 +103,20 @@ let
         # Values Nix cannot express, via the escape hatch.
         absent = raw "None Natural";
         nothing = raw "[] : List Text";
-        url = raw ''"http://''${input.host}"'';
+
+        # Text with values in it that Nix does not have. Literal parts are
+        # escaped like any other string; a part with no literals at all, and one
+        # with no parts, are both still a Text literal.
+        url = text [
+          "http://"
+          input.host
+        ];
+        quoted = text [
+          ''a "quoted" \ part: ''
+          input.db.user
+        ];
+        bare = text [ input.host ];
+        blank = text [ ];
 
         # Anything store-pathish becomes its path, rather than being walked.
         drv = {

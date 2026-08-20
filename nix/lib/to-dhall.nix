@@ -42,10 +42,16 @@
 # The argument's leaves are opaque markers, not strings or numbers, so the
 # template may only *place* them. Anything that inspects one -- arithmetic,
 # comparison, Nix string interpolation -- fails at evaluation, because the
-# value it wants is not known until Dhall applies the function. Build such
-# expressions with `raw` instead:
+# value it wants is not known until Dhall applies the function.
 #
-#   raw "\"http://${"$"}{input.host}\""
+# Putting a marker in a string is what this comes up for, and `text` is that
+# without leaving Nix; the literal parts are escaped as any other string is:
+#
+#   text [ "http://" input.host ]  =>  "http://${"$"}{input.host}"
+#
+# Anything else -- arithmetic, a conditional -- is Dhall, written with `raw`:
+#
+#   raw "if input.debug then 1 else 0"
 #
 # A Dhall lambda binds exactly one variable, so a function of several inputs
 # is either one record parameter, as above, or a chain. `lambda` nests, which
@@ -127,7 +133,7 @@ let
   # Dhall's text escapes are a subset of JSON's. The order matters: backslash
   # is replaced first, and `replaceStrings` makes a single pass, so nothing
   # introduced by a replacement is rescanned.
-  renderText =
+  escapeText =
     path: s:
     let
       escaped =
@@ -149,7 +155,33 @@ let
       # Dhall will reject with a worse message.
       err path "string contains a control character other than a tab, newline or carriage return"
     else
-      ''"'' + escaped + ''"'';
+      escaped;
+
+  renderText = path: s: ''"'' + escapeText path s + ''"'';
+
+  # A Text literal pieced together from literal strings and Dhall expressions,
+  # which is how a marker gets inside one. Quoted at both ends, so it is
+  # self-delimiting and needs no brackets wherever it lands.
+  renderTextParts =
+    path: parts:
+    let
+      part =
+        i:
+        let
+          p = elemAt parts i;
+          at = path ++ [ "[${toString i}]" ];
+        in
+        if typeOf p == "string" then
+          escapeText at p
+        else if typeOf p == "set" && p ? __dhall then
+          "\${" + p.__dhall + "}"
+        else
+          err at "a text part is a string or raw Dhall, not a ${typeOf p}";
+    in
+    if typeOf parts != "list" then
+      err path "text takes a list of parts, not a ${typeOf parts}"
+    else
+      ''"'' + concatStringsSep "" (genList part (length parts)) + ''"'';
 
   # A Dhall Double literal needs a fraction or an exponent; `toJSON` drops the
   # fraction from whole floats.
@@ -216,7 +248,7 @@ let
 
   # Carries Dhall source rather than a Nix value, so its Nix type says nothing
   # about the Dhall type it will render as.
-  isRaw = x: typeOf x == "set" && (x ? __dhall || x ? __dhallLambda);
+  isRaw = x: typeOf x == "set" && (x ? __dhall || x ? __dhallLambda || x ? __dhallText);
 
   # `x`, or `x.y.z`: a primitive expression, which never needs bracketing.
   isReference = text: match "[A-Za-z_][A-Za-z0-9_/-]*(\\.[A-Za-z_][A-Za-z0-9_/-]*)*" text != null;
@@ -258,6 +290,8 @@ let
     in
     if attrs ? __dhallLambda then
       renderLambda path ind attrs.__dhallLambda
+    else if attrs ? __dhallText then
+      renderTextParts path attrs.__dhallText
     # Raw Dhall, emitted as written. Bracketed off from its surroundings
     # everywhere but the top of a document, where there is nothing to
     # bracket it from.
@@ -322,6 +356,16 @@ in
   # Dhall source, spliced in as written. For the values Nix cannot express on
   # its own: `raw "None Natural"`, `raw "[] : List Text"`, a union, an import.
   raw = text: { __dhall = text; };
+
+  # A Text literal built from literal strings and Dhall expressions, for the
+  # commonest thing a marker is wanted for -- a string with a value in it that
+  # Nix does not have:
+  #
+  #   text [ "http://" input.host ]  =>  "http://${input.host}"
+  #
+  # The literal parts are escaped as any other string is, so this is not `raw`
+  # with extra steps: only the parts you pass as expressions are source.
+  text = parts: { __dhallText = parts; };
 
   # A Dhall function whose parameter supplies whatever is not known until the
   # function is applied. Curried so that the nesting that builds a
