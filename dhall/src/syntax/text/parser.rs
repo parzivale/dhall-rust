@@ -10,7 +10,7 @@ use itertools::Itertools;
 use pest::pratt_parser::{Assoc, Op, PrattParser};
 use std::collections::{BTreeMap, BTreeSet};
 use std::iter::once;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::LazyLock;
 
 use num_traits::ToPrimitive;
@@ -32,7 +32,7 @@ use crate::syntax::{
 
 type ParsedText = InterpolatedText<Expr>;
 type ParsedTextContents = InterpolatedTextContents<Expr>;
-type ParseInput<'input> = pest_consume::Node<'input, Rule, Rc<str>>;
+type ParseInput<'input> = pest_consume::Node<'input, Rule, Arc<str>>;
 
 pub type ParseError = pest::error::Error<Rule>;
 pub type ParseResult<T> = Result<T, ParseError>;

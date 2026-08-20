@@ -366,3 +366,18 @@ impl serde::Serialize for Function {
             .serialize_newtype_struct(FUNCTION_TOKEN, &FunctionBytes(&bytes))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Function;
+
+    /// The point of the `Expr` behind a `Function` owning its text outright: a
+    /// parsed function can be stored in a `Send` type, such as a configuration
+    /// held by a daemon that hands it between threads.
+    const fn assert_send_sync<T: Send + Sync>() {}
+
+    #[test]
+    fn functions_are_send_and_sync() {
+        assert_send_sync::<Function>();
+    }
+}

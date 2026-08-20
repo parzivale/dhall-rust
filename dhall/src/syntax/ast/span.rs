@@ -1,9 +1,9 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 /// A location in the source text
 #[derive(Debug, Clone)]
 pub struct ParsedSpan {
-    input: Rc<str>,
+    input: Arc<str>,
     /// # Safety
     ///
     /// Must be a valid character boundary index into `input`.
@@ -42,7 +42,7 @@ impl ParsedSpan {
 
 impl Span {
     #[must_use]
-    pub fn make(input: Rc<str>, sp: pest::Span) -> Self {
+    pub fn make(input: Arc<str>, sp: pest::Span) -> Self {
         Span::Parsed(ParsedSpan {
             input,
             start: sp.start(),
@@ -58,7 +58,7 @@ impl Span {
         use Span::*;
         use std::cmp::{max, min};
         match (self, other) {
-            (Parsed(x), Parsed(y)) if Rc::ptr_eq(&x.input, &y.input) => {
+            (Parsed(x), Parsed(y)) if Arc::ptr_eq(&x.input, &y.input) => {
                 Parsed(ParsedSpan {
                     input: x.input.clone(),
                     start: min(x.start, y.start),

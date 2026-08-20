@@ -259,3 +259,18 @@ impl std::hash::Hash for Expr {
         self.kind.hash(state);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Expr;
+
+    /// `Label` and `Span` own their text outright rather than through an `Rc`,
+    /// so an expression can be held across threads. `serde_dhall::Function`
+    /// stores one, which is what lets a parsed config live in a `Send` type.
+    const fn assert_send_sync<T: Send + Sync>() {}
+
+    #[test]
+    fn expressions_are_send_and_sync() {
+        assert_send_sync::<Expr>();
+    }
+}
