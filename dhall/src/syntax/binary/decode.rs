@@ -9,8 +9,8 @@ use crate::operations::OpKind;
 use crate::syntax;
 use crate::syntax::{
     Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget,
-    Integer, InterpolatedText, Label, Natural, NumKind, Scheme, Span,
-    UnspannedExpr, URL, V,
+    Integer, InterpolatedText, Label, Natural, NumKind, Scheme, Span, URL,
+    UnspannedExpr, V,
 };
 type DecodedExpr = Expr;
 
@@ -118,10 +118,10 @@ fn rc(x: UnspannedExpr) -> Expr {
 fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
     use crate::builtins::Builtin;
     use crate::operations::BinOp;
-    use syntax::Const;
     use ExprKind::*;
     use OpKind::*;
     use Value::*;
+    use syntax::Const;
     Ok(rc(match data {
         String(s) => match Builtin::parse(s) {
             Some(b) => ExprKind::Builtin(b),
@@ -134,7 +134,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                 _ => {
                     return Err(DecodeError::WrongFormatError(
                         "builtin".to_owned(),
-                    ))
+                    ));
                 }
             },
         },
@@ -223,7 +223,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                     _ => {
                         return Err(DecodeError::WrongFormatError(
                             "binop".to_owned(),
-                        ))
+                        ));
                     }
                 };
                 Op(BinOp(op, x, y))
@@ -314,7 +314,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
             [U64(12), ..] => {
                 return Err(DecodeError::WrongFormatError(
                     "Union literals are not supported anymore".to_owned(),
-                ))
+                ));
             }
             [U64(14), x, y, z] => {
                 let x = cbor_value_to_dhall(&x)?;
@@ -347,7 +347,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                                 _ => {
                                     return Err(DecodeError::WrongFormatError(
                                         "text".to_owned(),
-                                    ))
+                                    ));
                                 }
                             };
                             Ok((x, y))
@@ -368,7 +368,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                         return Err(DecodeError::WrongFormatError(format!(
                             "import/mode/unknown_mode: {:?}",
                             mode
-                        )))
+                        )));
                     }
                 };
                 let hash = match hash {
@@ -378,16 +378,18 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                             Some(Hash::SHA256(rest.to_vec().into()))
                         }
                         _ => {
-                            return Err(DecodeError::WrongFormatError(format!(
-                                "import/hash/unknown_multihash: {:?}",
-                                bytes
-                            )))
+                            return Err(DecodeError::WrongFormatError(
+                                format!(
+                                    "import/hash/unknown_multihash: {:?}",
+                                    bytes
+                                ),
+                            ));
                         }
                     },
                     _ => {
                         return Err(DecodeError::WrongFormatError(
                             "import/hash/should_be_bytes".to_owned(),
-                        ))
+                        ));
                     }
                 };
                 let mut rest = rest.iter();
@@ -406,7 +408,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                             _ => {
                                 return Err(DecodeError::WrongFormatError(
                                     "import/remote/headers".to_owned(),
-                                ))
+                                ));
                             }
                         };
                         let authority = match rest.next() {
@@ -414,7 +416,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                             _ => {
                                 return Err(DecodeError::WrongFormatError(
                                     "import/remote/authority".to_owned(),
-                                ))
+                                ));
                             }
                         };
                         let query = match rest.next_back() {
@@ -423,7 +425,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                             _ => {
                                 return Err(DecodeError::WrongFormatError(
                                     "import/remote/query".to_owned(),
-                                ))
+                                ));
                             }
                         };
                         let file_path = rest
@@ -452,7 +454,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                             _ => {
                                 return Err(DecodeError::WrongFormatError(
                                     "import/local/prefix".to_owned(),
-                                ))
+                                ));
                             }
                         };
                         let file_path = rest
@@ -472,7 +474,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                             _ => {
                                 return Err(DecodeError::WrongFormatError(
                                     "import/env".to_owned(),
-                                ))
+                                ));
                             }
                         };
                         ImportTarget::Env(env)
@@ -481,7 +483,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                     _ => {
                         return Err(DecodeError::WrongFormatError(
                             "import/type".to_owned(),
-                        ))
+                        ));
                     }
                 };
                 Import(syntax::Import {
@@ -551,7 +553,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                     _ => {
                         return Err(DecodeError::WrongFormatError(
                             "with".to_owned(),
-                        ))
+                        ));
                     }
                 };
                 Op(With(x, labels, y))
@@ -560,7 +562,7 @@ fn cbor_value_to_dhall(data: &Value) -> Result<DecodedExpr, DecodeError> {
                 return Err(DecodeError::WrongFormatError(format!(
                     "{:?}",
                     data
-                )))
+                )));
             }
         },
         _ => return Err(DecodeError::WrongFormatError(format!("{:?}", data))),

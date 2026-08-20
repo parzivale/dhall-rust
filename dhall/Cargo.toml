@@ -7,7 +7,7 @@ license = "BSD-2-Clause"
 description = "Implementation of the Dhall configuration language"
 readme = "README.md"
 repository = "https://github.com/parzivale/dhall-rust"
-edition = "2018"
+edition = "2024"
 build = "build.rs"
 include = ["src/**/*", "README.md", "build.rs"]
 
@@ -55,3 +55,6 @@ walkdir = "2.5.0"
 abnf_to_pest = "0.6.0"
 pest_generator = "2.9.0"
 quote = "1.0.47"
+
+[lints]
+workspace = true

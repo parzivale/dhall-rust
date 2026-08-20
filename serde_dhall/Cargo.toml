@@ -8,7 +8,7 @@ description = "Dhall support for serde"
 readme = "../README.md"
 repository = "https://github.com/parzivale/dhall-rust"
 keywords = ["serde", "serialization", "dhall"]
-edition = "2018"
+edition = "2024"
 include = ["src/**/*"]
 
 [features]
@@ -29,3 +29,6 @@ wasm-bindgen-test = "0.3.77"
 
 [dev-dependencies]
 version-sync = "0.9.5"
+
+[lints]
+workspace = true

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::error::{Error, ImportError};
-use crate::semantics::{check_hash, AlphaVar, Cache, ImportLocation, VarEnv};
+use crate::semantics::{AlphaVar, Cache, ImportLocation, VarEnv, check_hash};
 use crate::syntax::{Hash, Label, V};
 use crate::{Ctxt, ImportId, ImportResultId, Typed};
 

@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, HashMap};
 use std::result::Result as StdResult;
 
+use sessiond_dhall::Ctxt;
 use sessiond_dhall::builtins::Builtin;
 use sessiond_dhall::operations::OpKind;
 use sessiond_dhall::semantics::{Hir, HirKind, Nir, NirKind};
 pub use sessiond_dhall::syntax::NumKind;
 use sessiond_dhall::syntax::{Expr, ExprKind, Span};
-use sessiond_dhall::Ctxt;
 
 use crate::{Error, ErrorKind, FromDhall, Function, Result, ToDhall};
 

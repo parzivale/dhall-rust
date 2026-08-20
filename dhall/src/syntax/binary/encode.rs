@@ -158,9 +158,9 @@ impl minicbor::Encode<()> for Expr {
         enc: &mut minicbor::Encoder<W>,
         ctx: &mut (),
     ) -> Result<(), minicbor::encode::Error<W::Error>> {
+        use OpKind::*;
         use syntax::ExprKind::*;
         use syntax::NumKind::*;
-        use OpKind::*;
 
         let null = None::<()>;
 

@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use sessiond_serde_dhall::{from_str, Function, SimpleType, SimpleValue};
+use sessiond_serde_dhall::{Function, SimpleType, SimpleValue, from_str};
 use std::collections::HashMap;
 
 #[test]
@@ -174,10 +174,12 @@ fn function_types_are_simple_types() {
         .unwrap();
     assert_eq!(f.apply::<_, String>(42u64).unwrap(), "42".to_string());
 
-    assert!(from_str("\\(x : Natural) -> x")
-        .type_annotation(&ty)
-        .parse::<Function>()
-        .is_err());
+    assert!(
+        from_str("\\(x : Natural) -> x")
+            .type_annotation(&ty)
+            .parse::<Function>()
+            .is_err()
+    );
 }
 
 #[test]
@@ -213,9 +215,11 @@ fn a_record_type_can_mention_functions() {
 
 #[test]
 fn a_dependent_function_type_is_not_a_simple_type() {
-    assert!(from_str("forall (a : Type) -> List a")
-        .parse::<SimpleType>()
-        .is_err());
+    assert!(
+        from_str("forall (a : Type) -> List a")
+            .parse::<SimpleType>()
+            .is_err()
+    );
 }
 
 #[test]
@@ -256,9 +260,11 @@ fn a_function_survives_a_simple_value_round_trip() {
 fn deserializing_a_function_into_another_type_fails() {
     assert!(from_str("\\(x : Natural) -> x").parse::<u64>().is_err());
     assert!(from_str("\\(x : Natural) -> x").parse::<String>().is_err());
-    assert!(from_str("{ f = \\(x : Natural) -> x }")
-        .parse::<HashMap<String, u64>>()
-        .is_err());
+    assert!(
+        from_str("{ f = \\(x : Natural) -> x }")
+            .parse::<HashMap<String, u64>>()
+            .is_err()
+    );
 }
 
 #[test]
@@ -331,16 +337,20 @@ fn a_function_can_be_passed_to_another_function() {
 fn a_function_serialized_with_a_type_annotation_is_checked() {
     let f: Function = from_str("\\(x : Natural) -> x").parse().unwrap();
     let fn_ty: SimpleType = from_str("Natural -> Natural").parse().unwrap();
-    assert!(sessiond_serde_dhall::serialize(&f)
-        .type_annotation(&fn_ty)
-        .to_string()
-        .is_ok());
+    assert!(
+        sessiond_serde_dhall::serialize(&f)
+            .type_annotation(&fn_ty)
+            .to_string()
+            .is_ok()
+    );
 
     // A non-function annotation is rejected.
-    assert!(sessiond_serde_dhall::serialize(&f)
-        .type_annotation(&SimpleType::Natural)
-        .to_string()
-        .is_err());
+    assert!(
+        sessiond_serde_dhall::serialize(&f)
+            .type_annotation(&SimpleType::Natural)
+            .to_string()
+            .is_err()
+    );
 }
 
 #[test]

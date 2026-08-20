@@ -6,7 +6,7 @@ use num_bigint::{BigUint, Sign};
 use num_traits::{ToPrimitive, Zero};
 
 use crate::operations::{BinOp, OpKind};
-use crate::semantics::{nze, Hir, HirKind, Nir, NirKind, NzEnv, VarEnv};
+use crate::semantics::{Hir, HirKind, Nir, NirKind, NzEnv, VarEnv, nze};
 use crate::syntax::Const::Type;
 use crate::syntax::{
     Const, Expr, ExprKind, InterpolatedText, InterpolatedTextContents, Label,

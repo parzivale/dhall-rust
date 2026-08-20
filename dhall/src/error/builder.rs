@@ -1,5 +1,5 @@
 use annotate_snippets::{
-    renderer::DecorStyle, AnnotationKind, Element, Level, Renderer, Snippet,
+    AnnotationKind, Element, Level, Renderer, Snippet, renderer::DecorStyle,
 };
 
 use crate::syntax::{ParsedSpan, Span};

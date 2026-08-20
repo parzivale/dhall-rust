@@ -4,3 +4,11 @@ members = [
     "dhall_proc_macros",
     "serde_dhall"
 ]
+# Edition 2024 implies this, but a virtual workspace does not inherit it from
+# its members.
+resolver = "3"
+
+# Applied by each crate with `[lints] workspace = true`, so the set is in one
+# place rather than three.
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }

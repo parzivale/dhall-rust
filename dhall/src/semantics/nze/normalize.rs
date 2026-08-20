@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::operations::{normalize_operation, OpKind};
+use crate::operations::{OpKind, normalize_operation};
 use crate::semantics::NzEnv;
 use crate::semantics::{Binder, Closure, Hir, HirKind, Nir, NirKind, TextLit};
 use crate::syntax::{ExprKind, InterpolatedTextContents};
@@ -19,8 +19,8 @@ pub fn apply_any<'cx>(f: &Nir<'cx>, a: Nir<'cx>) -> NirKind<'cx> {
 pub fn squash_textlit<'cx>(
     elts: impl Iterator<Item = InterpolatedTextContents<Nir<'cx>>>,
 ) -> Vec<InterpolatedTextContents<Nir<'cx>>> {
-    use std::mem::replace;
     use InterpolatedTextContents::{Expr, Text};
+    use std::mem::replace;
 
     fn inner<'cx>(
         elts: impl Iterator<Item = InterpolatedTextContents<Nir<'cx>>>,

@@ -1,7 +1,7 @@
 mod serde {
     use serde::{Deserialize, Serialize};
     use sessiond_serde_dhall::{
-        from_str, serialize, FromDhall, StaticType, ToDhall, Value,
+        FromDhall, StaticType, ToDhall, Value, from_str, serialize,
     };
     use std::collections;
 
@@ -144,10 +144,12 @@ mod serde {
         }
         assert_serde::<Bar>("< X | Y: Integer >.X", Bar::X);
 
-        assert!(from_str("< X | Y: Integer >.Y")
-            .static_type_annotation()
-            .parse::<Bar>()
-            .is_err());
+        assert!(
+            from_str("< X | Y: Integer >.Y")
+                .static_type_annotation()
+                .parse::<Bar>()
+                .is_err()
+        );
     }
 
     #[test]
@@ -252,9 +254,11 @@ mod serde {
         // A `Prelude.Map.Type` is a list of records and stays one, so it does
         // not deserialize into a map. Doing so would drop repeated keys and the
         // ordering, both of which a Dhall map can carry.
-        assert!(from_str("toMap { x = 1, y = 2 }")
-            .parse::<HashMap<String, u64>>()
-            .is_err());
+        assert!(
+            from_str("toMap { x = 1, y = 2 }")
+                .parse::<HashMap<String, u64>>()
+                .is_err()
+        );
         assert_eq!(
             parse::<Vec<(String, u64)>>(
                 "[ { _1 = \"x\", _2 = 1 }, { _1 = \"y\", _2 = 2 } ]"
@@ -371,12 +375,12 @@ mod serde {
         );
 
         // `imports(false)` still refuses everything, remote included.
-        assert!(sessiond_serde_dhall::from_str(
-            "https://example.com/config.dhall"
-        )
-        .imports(false)
-        .parse::<u64>()
-        .is_err());
+        assert!(
+            sessiond_serde_dhall::from_str("https://example.com/config.dhall")
+                .imports(false)
+                .parse::<u64>()
+                .is_err()
+        );
     }
 
     #[test]

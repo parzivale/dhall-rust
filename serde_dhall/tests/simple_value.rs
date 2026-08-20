@@ -1,7 +1,7 @@
 mod simple_value {
     use serde::{Deserialize, Serialize};
     use sessiond_serde_dhall::{
-        from_str, serialize, FromDhall, NumKind, SimpleValue, ToDhall, Value,
+        FromDhall, NumKind, SimpleValue, ToDhall, Value, from_str, serialize,
     };
 
     fn assert_de<T>(s: &str, x: T)

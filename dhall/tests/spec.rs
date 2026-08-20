@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::env;
 use std::ffi::OsString;
 use std::fmt::{Debug, Display};
-use std::fs::{create_dir_all, read_to_string, File};
+use std::fs::{File, create_dir_all, read_to_string};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,7 +12,7 @@ use walkdir::WalkDir;
 
 use sessiond_dhall::error::Error as DhallError;
 use sessiond_dhall::error::ErrorKind;
-use sessiond_dhall::syntax::{binary, Expr};
+use sessiond_dhall::syntax::{Expr, binary};
 use sessiond_dhall::{Ctxt, Normalized, Parsed, Resolved, Typed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,9 +101,10 @@ impl TestFile {
             TestFile::Source(_) => Parsed::parse_file(&self.path())?,
             TestFile::Binary(_) => Parsed::parse_binary_file(&self.path())?,
             TestFile::UI(_) => {
-                return Err(
-                    TestError("Can't parse a UI test file".to_string()).into()
+                return Err(TestError(
+                    "Can't parse a UI test file".to_string(),
                 )
+                .into());
             }
         })
     }
@@ -154,7 +155,7 @@ impl TestFile {
                 return Err(TestError(
                     "Can't write an expression to a UI file".to_string(),
                 )
-                .into())
+                .into());
             }
         }
         Ok(())
@@ -167,7 +168,7 @@ impl TestFile {
                 return Err(TestError(
                     "Can't write a ui string to a dhall file".to_string(),
                 )
-                .into())
+                .into());
             }
         }
         let path = self.path();
@@ -238,7 +239,7 @@ impl TestFile {
             _ => {
                 return Err(
                     TestError("This is not a binary file".to_string()).into()
-                )
+                );
             }
         }
         if !self.path().is_file() {
@@ -646,7 +647,7 @@ fn run_test(test: &SpecTest) -> Result<()> {
                                 "Expected parse error, got: {:?}",
                                 e
                             ))
-                            .into())
+                            .into());
                         }
                     }
                 }
@@ -808,10 +809,9 @@ fn main() {
         .flat_map(discover_tests_for_feature)
         .collect();
 
-    // Set environment variable for import tests.
-    env::set_var("DHALL_TEST_VAR", "6 * 7");
-
-    // Configure cache for import tests
+    // The import cache the standard's cache tests read from. `fs_extra`
+    // preserves permissions, so copying from a read-only pin (a nix store
+    // path) would leave it unwritable for the tests that add to it.
     let dhall_cache_dir = dhall_lang_dir
         .join("tests")
         .join("import")
@@ -821,10 +821,7 @@ fn main() {
     std::fs::create_dir_all(&cache_dir).unwrap();
     fs_extra::dir::copy(&dhall_cache_dir, &cache_dir, &Default::default())
         .unwrap();
-    // `fs_extra` preserves permissions, so copying from a read-only pin (a nix
-    // store path) would leave the cache unwritable for the import tests.
     make_writable(&cache_dir);
-    env::set_var("XDG_CACHE_HOME", &cache_dir);
 
     let dhall_home_dir = crate_dir
         // TODO: point to the dhall-lang pin and remove the local version of the
@@ -834,11 +831,19 @@ fn main() {
         .join("import")
         .join("home");
 
-    #[cfg(target_family = "unix")]
-    env::set_var("HOME", &dhall_home_dir);
-
-    #[cfg(target_family = "windows")]
-    env::set_var("USERPROFILE", &dhall_home_dir);
+    // These have to be in the process environment rather than passed in: an
+    // `env:` import reads the real environment, the cache is located from
+    // `XDG_CACHE_HOME`, and a `~/...` import from `HOME`.
+    //
+    // SAFETY: `set_var` is unsafe from edition 2024 because a concurrent read
+    // of the environment is a data race. This is the whole of the setup, it
+    // runs before `libtest_mimic::run` below starts any test thread, and
+    // nothing above spawns one.
+    unsafe {
+        env::set_var("DHALL_TEST_VAR", "6 * 7");
+        env::set_var("XDG_CACHE_HOME", &cache_dir);
+        env::set_var("HOME", &dhall_home_dir);
+    }
 
     // Whether to overwrite the output files when our own output differs.
     // Either set `UPDATE_TEST_FILES=1` (deprecated) or pass `--bless` as an argument to this test

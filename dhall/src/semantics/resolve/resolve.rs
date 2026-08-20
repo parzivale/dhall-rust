@@ -10,12 +10,12 @@ use crate::error::ErrorBuilder;
 use crate::error::{Error, ImportError};
 use crate::operations::{BinOp, OpKind};
 use crate::semantics::{
-    mkerr, Hir, HirKind, ImportEnv, NameEnv, Nir, NirKind, Type,
+    Hir, HirKind, ImportEnv, NameEnv, Nir, NirKind, Type, mkerr,
 };
 use crate::syntax;
 use crate::syntax::{
     Expr, ExprKind, FilePath, FilePrefix, Hash, ImportMode, ImportTarget,
-    Label, Span, UnspannedExpr, URL,
+    Label, Span, URL, UnspannedExpr,
 };
 use crate::{
     Ctxt, ImportAlternativeId, ImportId, ImportResultId, Parsed, Resolved,
@@ -143,7 +143,7 @@ impl ImportLocationKind {
                 Parsed::parse_str(&val)?
             }
             ImportLocationKind::Missing => {
-                return Err(ImportError::Missing.into())
+                return Err(ImportError::Missing.into());
             }
             ImportLocationKind::NoImport => unreachable!(),
         })
@@ -169,7 +169,7 @@ impl ImportLocationKind {
                 Err(_) => return Err(ImportError::MissingEnvVar.into()),
             },
             ImportLocationKind::Missing => {
-                return Err(ImportError::Missing.into())
+                return Err(ImportError::Missing.into());
             }
             ImportLocationKind::NoImport => unreachable!(),
         })

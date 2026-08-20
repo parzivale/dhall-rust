@@ -1,11 +1,11 @@
 use std::cmp::max;
 
-use crate::builtins::{type_of_builtin, Builtin};
+use crate::Ctxt;
+use crate::builtins::{Builtin, type_of_builtin};
 use crate::error::{ErrorBuilder, TypeError, TypeMessage};
 use crate::operations::typecheck_operation;
 use crate::semantics::{Hir, HirKind, Nir, NirKind, Tir, TyEnv, Type};
 use crate::syntax::{Const, ExprKind, InterpolatedTextContents, NumKind, Span};
-use crate::Ctxt;
 
 fn function_check(a: Const, b: Const) -> Const {
     if b == Const::Type {
@@ -152,7 +152,7 @@ fn type_one_layer<'cx>(
                     match t.ty().as_const() {
                         Some(c) => k = max(k, c),
                         None => {
-                            return mk_span_err(t.span(), "InvalidVariantType")
+                            return mk_span_err(t.span(), "InvalidVariantType");
                         }
                     }
                 }
@@ -205,7 +205,7 @@ pub fn type_with<'cx, 'hir>(
             unreachable!("Hir should contain no unresolved variables")
         }
         HirKind::Expr(ExprKind::Const(Const::Sort)) => {
-            return mk_span_err(hir.span(), "Sort does not have a type")
+            return mk_span_err(hir.span(), "Sort does not have a type");
         }
         HirKind::Expr(ExprKind::Annot(x, t)) => {
             let t = match t.kind() {

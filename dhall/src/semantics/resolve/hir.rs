@@ -1,5 +1,5 @@
 use crate::error::TypeError;
-use crate::semantics::{type_with, typecheck, NameEnv, Nir, NzEnv, Tir, TyEnv};
+use crate::semantics::{NameEnv, Nir, NzEnv, Tir, TyEnv, type_with, typecheck};
 use crate::syntax::{Expr, ExprKind, Span, V};
 use crate::{Ctxt, ImportAlternativeId, ImportId, ToExprOptions};
 

@@ -3,7 +3,7 @@ use std::result::Result as StdResult;
 
 use sessiond_dhall::operations::OpKind;
 use sessiond_dhall::semantics::{Hir, Nir, NirKind};
-use sessiond_dhall::syntax::{binary, Expr, ExprKind, Span};
+use sessiond_dhall::syntax::{Expr, ExprKind, Span, binary};
 use sessiond_dhall::{Ctxt, Parsed};
 
 use crate::{Error, ErrorKind, FromDhall, Result, SimpleType, ToDhall, Value};

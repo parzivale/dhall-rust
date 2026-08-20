@@ -1,7 +1,7 @@
 #![cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::*;
 
-use sessiond_serde_dhall::{from_str, FromDhall, StaticType};
+use sessiond_serde_dhall::{FromDhall, StaticType, from_str};
 
 #[wasm_bindgen_test]
 fn test() {

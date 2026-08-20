@@ -314,14 +314,14 @@ mod value;
 #[doc(hidden)]
 pub use sessiond_dhall_proc_macros::StaticType;
 
-pub use deserialize::{from_simple_value, FromDhall};
+pub use deserialize::{FromDhall, from_simple_value};
 pub(crate) use error::ErrorKind;
 pub use error::{Error, Result};
 pub use function::Function;
 pub use options::de::{
-    from_binary, from_binary_file, from_file, from_str, Deserializer,
+    Deserializer, from_binary, from_binary_file, from_file, from_str,
 };
-pub use options::ser::{serialize, Serializer};
+pub use options::ser::{Serializer, serialize};
 pub use serialize::ToDhall;
 pub use static_type::StaticType;
 pub use value::{NumKind, SimpleType, SimpleValue, Value};

@@ -5,8 +5,8 @@ use crate::builtins::{Builtin, BuiltinClosure};
 use crate::operations::{BinOp, OpKind};
 use crate::semantics::nze::lazy;
 use crate::semantics::{
-    apply_any, normalize_hir, normalize_one_layer, squash_textlit, Binder, Hir,
-    HirKind, NzEnv, NzVar, TyEnv, Type, Universe, VarEnv,
+    Binder, Hir, HirKind, NzEnv, NzVar, TyEnv, Type, Universe, VarEnv,
+    apply_any, normalize_hir, normalize_one_layer, squash_textlit,
 };
 use crate::syntax::{
     Const, Expr, ExprKind, InterpolatedTextContents, Label, NumKind, Span,

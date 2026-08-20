@@ -1,10 +1,10 @@
 use std::path::Path;
 use url::Url;
 
-use crate::error::Error;
-use crate::semantics::resolve::{download_http, ImportLocation};
-use crate::syntax::{binary, parse_expr};
 use crate::Parsed;
+use crate::error::Error;
+use crate::semantics::resolve::{ImportLocation, download_http};
+use crate::syntax::{binary, parse_expr};
 
 pub fn parse_file(f: &Path) -> Result<Parsed, Error> {
     let path = crate::resolve::resolve_home(f)?;

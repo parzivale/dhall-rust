@@ -6,8 +6,8 @@ use crate::builtins::Builtin;
 use crate::error::{ErrorBuilder, TypeError};
 use crate::operations::{BinOp, OpKind};
 use crate::semantics::{
-    merge_maps, mk_span_err, mkerr, Binder, Closure, Hir, HirKind, Nir,
-    NirKind, Tir, TyEnv, Type,
+    Binder, Closure, Hir, HirKind, Nir, NirKind, Tir, TyEnv, Type, merge_maps,
+    mk_span_err, mkerr,
 };
 use crate::syntax::{Const, ExprKind, Span};
 
@@ -247,7 +247,7 @@ fn typecheck_merge<'cx>(
                             variant_type.to_expr_tyenv(env)
                         ))
                         .format(),
-                    )
+                    );
                 }
             },
             // Union alternative without type
@@ -370,7 +370,9 @@ pub fn typecheck_operation<'cx>(
             let kts = match record_t.kind() {
                 RecordType(kts) => kts,
                 _ => {
-                    return span_err("The argument to `toMap` must be a record")
+                    return span_err(
+                        "The argument to `toMap` must be a record",
+                    );
                 }
             };
 
